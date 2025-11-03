@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 .next/
+dependencies/
 # lib/ keeps vendored Solidity dependencies and submodules
 # Do not ignore the entire lib directory to allow vendoring
 
