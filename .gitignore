@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.next/
+# lib/ keeps vendored Solidity dependencies and submodules
+# Do not ignore the entire lib directory to allow vendoring
+
+# Hardhat
+.cache
+cache
+cache-zk
+cache_hardhat/
+cache_hardhat-zk/
+artifacts/
+artifacts-zk/
+coverage
+coverage.json
+typechain
+typechain-types
+
+# Foundry
+cache_forge/
+out/
+zkout/
+
+# Environment
+.env
+.env.testnet
+.env.fork
+.env.local
+.env.production
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+broadcast/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.temp
+
+# Custom files
+draft
+notes.txt
+deployments/
