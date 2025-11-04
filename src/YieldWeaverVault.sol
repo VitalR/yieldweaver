@@ -10,6 +10,7 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { IYieldStrategy } from "./interfaces/IYieldStrategy.sol";
+import { Errors } from "./common/Errors.sol";
 
 /// @title YieldWeaverVault
 /// @notice Multi-strategy ERC-4626 vault that routes capital across several Octant-compatible strategies and donates
@@ -60,7 +61,7 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
     uint256 private _activeAllocationBps;
 
     // =============================================================
-    //                       EVENTS & ERRORS
+    //                           EVENTS
     // =============================================================
 
     /// @notice Emitted when the donation address is updated.
@@ -81,24 +82,6 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
     /// @notice Emitted after the vault-level harvest completes with net profit/loss information.
     event VaultHarvest(uint256 profit, uint256 loss, uint256 totalManagedAfter);
 
-    /// @notice Thrown when the provided list of allocations does not match the number of strategies.
-    error AllocationMismatch();
-
-    /// @notice Thrown when attempting to set the donation address to the zero address.
-    error DonationAddressZero();
-
-    /// @notice Thrown when strategy allocations exceed 100% of capital.
-    error InvalidAllocationSum(uint256 allocationSum);
-
-    /// @notice Thrown when a supplied asset address does not match the vault's underlying token.
-    error InvalidAsset();
-
-    /// @notice Thrown when attempting to register a duplicate strategy.
-    error StrategyAlreadyExists();
-
-    /// @notice Thrown when interacting with an index that does not reference an active strategy.
-    error StrategyNotActive(uint256 strategyId);
-
     // =============================================================
     //                         CONSTRUCTOR
     // =============================================================
@@ -115,8 +98,8 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
         address _donationAddress,
         address _initialOwner
     ) ERC20(_name, _symbol) ERC4626(_asset) Ownable(_initialOwner) {
-        require(address(_asset) != address(0), InvalidAsset());
-        require(_donationAddress != address(0), DonationAddressZero());
+        require(address(_asset) != address(0), Errors.InvalidAsset());
+        require(_donationAddress != address(0), Errors.DonationAddressZero());
         donationAddress = _donationAddress;
     }
 
@@ -127,7 +110,7 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
     /// @notice Updates the donation address that receives newly minted profit shares.
     /// @param _newDonationAddress Address that will receive future donated shares.
     function setDonationAddress(address _newDonationAddress) external onlyOwner {
-        require(_newDonationAddress != address(0), DonationAddressZero());
+        require(_newDonationAddress != address(0), Errors.DonationAddressZero());
 
         address previousDonationAddress = donationAddress;
         donationAddress = _newDonationAddress;
@@ -148,18 +131,20 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
     /// @param _allocationBps Target allocation expressed in basis points.
     /// @param _isActive Whether the strategy should be active immediately.
     function addStrategy(IYieldStrategy _strategy, uint16 _allocationBps, bool _isActive) external onlyOwner {
-        require(address(_strategy) != address(0), InvalidAsset());
-        require(_strategy.asset() == asset(), InvalidAsset());
+        require(address(_strategy) != address(0), Errors.InvalidAsset());
+        require(_strategy.asset() == asset(), Errors.InvalidAsset());
 
         for (uint256 i = 0; i < _strategies.length; ++i) {
-            require(address(_strategies[i].strategy) != address(_strategy), StrategyAlreadyExists());
+            require(address(_strategies[i].strategy) != address(_strategy), Errors.StrategyAlreadyExists());
         }
 
         _strategies.push(StrategyPosition({ strategy: _strategy, allocationBps: _allocationBps, isActive: _isActive }));
 
         if (_isActive) {
             _activeAllocationBps += _allocationBps;
-            if (_activeAllocationBps > ALLOCATION_BASIS_POINTS) revert InvalidAllocationSum(_activeAllocationBps);
+            if (_activeAllocationBps > ALLOCATION_BASIS_POINTS) {
+                revert Errors.InvalidAllocationSum(_activeAllocationBps);
+            }
         }
 
         emit StrategyChanged(address(_strategy), StrategyChangeType.ADDED, _allocationBps);
@@ -170,7 +155,7 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
     /// @param _allocationBps New allocation in basis points.
     /// @param _isActive Whether the strategy remains active after the update.
     function updateStrategy(uint256 _strategyId, uint16 _allocationBps, bool _isActive) external onlyOwner {
-        require(_strategyId < _strategies.length, StrategyNotActive(_strategyId));
+        require(_strategyId < _strategies.length, Errors.StrategyNotActive(_strategyId));
         StrategyPosition storage strategyPosition = _strategies[_strategyId];
 
         if (strategyPosition.isActive) {
@@ -182,7 +167,9 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
 
         if (_isActive) {
             _activeAllocationBps += _allocationBps;
-            if (_activeAllocationBps > ALLOCATION_BASIS_POINTS) revert InvalidAllocationSum(_activeAllocationBps);
+            if (_activeAllocationBps > ALLOCATION_BASIS_POINTS) {
+                revert Errors.InvalidAllocationSum(_activeAllocationBps);
+            }
         }
 
         emit StrategyChanged(address(strategyPosition.strategy), StrategyChangeType.UPDATED, _allocationBps);
@@ -191,7 +178,7 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
     /// @notice Bulk-updates allocation basis points for all strategies.
     /// @param _newAllocationsBps Array of allocation basis points matching the number of strategies.
     function setAllocations(uint16[] calldata _newAllocationsBps) external onlyOwner {
-        require(_newAllocationsBps.length == _strategies.length, AllocationMismatch());
+        require(_newAllocationsBps.length == _strategies.length, Errors.AllocationMismatch());
 
         uint256 newActiveSum;
         for (uint256 i = 0; i < _newAllocationsBps.length; ++i) {
@@ -202,7 +189,7 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
             }
         }
 
-        if (newActiveSum > ALLOCATION_BASIS_POINTS) revert InvalidAllocationSum(newActiveSum);
+        if (newActiveSum > ALLOCATION_BASIS_POINTS) revert Errors.InvalidAllocationSum(newActiveSum);
         _activeAllocationBps = newActiveSum;
     }
 

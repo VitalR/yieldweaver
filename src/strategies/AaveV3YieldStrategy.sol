@@ -12,6 +12,7 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 
 import { IYieldStrategy } from "src/interfaces/IYieldStrategy.sol";
 import { IPool } from "src/external/aave/IPool.sol";
+import { Errors } from "src/common/Errors.sol";
 
 /// @title AaveV3YieldStrategy
 /// @notice ERC-4626 strategy adapter that supplies vault assets into an Aave V3 lending pool.
@@ -19,16 +20,6 @@ import { IPool } from "src/external/aave/IPool.sol";
 ///      `YieldWeaverVault` while remaining compatible with Octant's TokenizedStrategy expectations.
 contract AaveV3YieldStrategy is ERC20, ERC20Permit, ERC4626, IYieldStrategy {
     using SafeERC20 for IERC20;
-
-    error InvalidAsset();
-    error InvalidPool();
-    error InvalidAToken();
-    error InvalidVault();
-    error NotVault();
-    error NotManagement();
-    error NotKeeperOrManagement();
-    error NotEmergencyAuthorized();
-    error NoPendingManagement();
 
     /// @notice Aave V3 pool used to supply/withdraw liquidity.
     IPool public immutable pool;
@@ -76,7 +67,7 @@ contract AaveV3YieldStrategy is ERC20, ERC20Permit, ERC4626, IYieldStrategy {
     uint256 private _lastReport;
 
     modifier onlyVault() {
-        if (msg.sender != vault) revert NotVault();
+        require(msg.sender == vault, Errors.NotVault());
         _;
     }
 
@@ -85,10 +76,10 @@ contract AaveV3YieldStrategy is ERC20, ERC20Permit, ERC4626, IYieldStrategy {
         ERC20Permit("Aave V3 Strategy Share")
         ERC4626(_asset)
     {
-        if (address(_asset) == address(0)) revert InvalidAsset();
-        if (address(_pool) == address(0)) revert InvalidPool();
-        if (address(_aToken) == address(0)) revert InvalidAToken();
-        if (_vault == address(0)) revert InvalidVault();
+        require(address(_asset) != address(0), Errors.InvalidAsset());
+        require(address(_pool) != address(0), Errors.InvalidPool());
+        require(address(_aToken) != address(0), Errors.InvalidAToken());
+        require(_vault != address(0), Errors.InvalidVault());
 
         pool = _pool;
         aToken = _aToken;
@@ -195,7 +186,7 @@ contract AaveV3YieldStrategy is ERC20, ERC20Permit, ERC4626, IYieldStrategy {
         address _dragonRouter_,
         bool _enableBurning
     ) external override {
-        if (_asset != address(_underlying)) revert InvalidAsset();
+        if (_asset != address(_underlying)) revert Errors.InvalidAsset();
         _management = _management_;
         _keeper = _keeper_;
         _emergencyAdmin = _emergencyAdmin_;
@@ -221,15 +212,15 @@ contract AaveV3YieldStrategy is ERC20, ERC20Permit, ERC4626, IYieldStrategy {
     }
 
     function requireManagement(address _sender) external view override {
-        if (_sender != _management) revert NotManagement();
+        if (_sender != _management) revert Errors.NotManagement();
     }
 
     function requireKeeperOrManagement(address _sender) external view override {
-        if (_sender != _keeper && _sender != _management) revert NotKeeperOrManagement();
+        if (_sender != _keeper && _sender != _management) revert Errors.NotKeeperOrManagement();
     }
 
     function requireEmergencyAuthorized(address _sender) external view override {
-        if (_sender != _emergencyAdmin && _sender != _management) revert NotEmergencyAuthorized();
+        if (_sender != _emergencyAdmin && _sender != _management) revert Errors.NotEmergencyAuthorized();
     }
 
     function tend() external pure override { }
@@ -295,7 +286,7 @@ contract AaveV3YieldStrategy is ERC20, ERC20Permit, ERC4626, IYieldStrategy {
     }
 
     function acceptManagement() external override {
-        if (_pendingManagement == address(0)) revert NoPendingManagement();
+        if (_pendingManagement == address(0)) revert Errors.NoPendingManagement();
         _management = _pendingManagement;
         _pendingManagement = address(0);
     }

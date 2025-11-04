@@ -9,6 +9,7 @@ import { ERC20Mock } from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import { AaveV3YieldStrategy } from "src/strategies/AaveV3YieldStrategy.sol";
 import { IPool } from "src/external/aave/IPool.sol";
 import { MockAavePool } from "test/mocks/MockAavePool.sol";
+import { Errors } from "src/common/Errors.sol";
 
 contract AaveV3YieldStrategyUnitTests is Test {
     using SafeERC20 for ERC20Mock;
@@ -31,7 +32,7 @@ contract AaveV3YieldStrategyUnitTests is Test {
     }
 
     function test_onlyVaultCanDeploy() public {
-        vm.expectRevert(AaveV3YieldStrategy.NotVault.selector);
+        vm.expectRevert(Errors.NotVault.selector);
         strategy.deploy(0);
     }
 
@@ -121,7 +122,7 @@ contract AaveV3YieldStrategyUnitTests is Test {
 
     function test_initialize_revertsForMismatchedAsset() public {
         address otherAsset = makeAddr("otherAsset");
-        vm.expectRevert(AaveV3YieldStrategy.InvalidAsset.selector);
+        vm.expectRevert(Errors.InvalidAsset.selector);
         strategy.initialize(otherAsset, "", address(this), address(this), address(this), address(this), false);
     }
 
@@ -129,7 +130,7 @@ contract AaveV3YieldStrategyUnitTests is Test {
         address management = makeAddr("managementRole");
         strategy.initialize(address(assetToken), "", management, address(0x1), address(0x2), address(0x3), false);
         strategy.requireManagement(management);
-        vm.expectRevert(AaveV3YieldStrategy.NotManagement.selector);
+        vm.expectRevert(Errors.NotManagement.selector);
         strategy.requireManagement(address(0xBEEF));
     }
 
@@ -139,7 +140,7 @@ contract AaveV3YieldStrategyUnitTests is Test {
         strategy.initialize(address(assetToken), "", management, keeper, address(0x2), address(0x3), false);
         strategy.requireKeeperOrManagement(management);
         strategy.requireKeeperOrManagement(keeper);
-        vm.expectRevert(AaveV3YieldStrategy.NotKeeperOrManagement.selector);
+        vm.expectRevert(Errors.NotKeeperOrManagement.selector);
         strategy.requireKeeperOrManagement(address(0xBEEF));
     }
 
@@ -149,7 +150,7 @@ contract AaveV3YieldStrategyUnitTests is Test {
         strategy.initialize(address(assetToken), "", management, address(0x1), emergency, address(0x3), false);
         strategy.requireEmergencyAuthorized(management);
         strategy.requireEmergencyAuthorized(emergency);
-        vm.expectRevert(AaveV3YieldStrategy.NotEmergencyAuthorized.selector);
+        vm.expectRevert(Errors.NotEmergencyAuthorized.selector);
         strategy.requireEmergencyAuthorized(address(0xBEEF));
     }
 
@@ -170,7 +171,7 @@ contract AaveV3YieldStrategyUnitTests is Test {
     }
 
     function test_acceptManagement_revertsWhenNoPending() public {
-        vm.expectRevert(AaveV3YieldStrategy.NoPendingManagement.selector);
+        vm.expectRevert(Errors.NoPendingManagement.selector);
         strategy.acceptManagement();
     }
 

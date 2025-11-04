@@ -8,6 +8,7 @@ import { ERC20Mock } from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import { YieldWeaverVault } from "src/YieldWeaverVault.sol";
 import { IYieldStrategy } from "src/interfaces/IYieldStrategy.sol";
 import { MockYieldStrategy } from "test/mocks/MockYieldStrategy.sol";
+import { Errors } from "src/common/Errors.sol";
 
 contract YieldWeaverVaultUnitTests is Test {
     using SafeERC20 for ERC20Mock;
@@ -34,7 +35,7 @@ contract YieldWeaverVaultUnitTests is Test {
     }
 
     function test_constructor_revertsWhenAssetZero() public {
-        vm.expectRevert(YieldWeaverVault.InvalidAsset.selector);
+        vm.expectRevert(Errors.InvalidAsset.selector);
         new YieldWeaverVault({
             _asset: ERC20Mock(address(0)),
             _name: "Bad",
@@ -45,7 +46,7 @@ contract YieldWeaverVaultUnitTests is Test {
     }
 
     function test_constructor_revertsWhenDonationZero() public {
-        vm.expectRevert(YieldWeaverVault.DonationAddressZero.selector);
+        vm.expectRevert(Errors.DonationAddressZero.selector);
         new YieldWeaverVault({
             _asset: assetToken, _name: "Bad", _symbol: "BAD", _donationAddress: address(0), _initialOwner: address(this)
         });
@@ -60,7 +61,7 @@ contract YieldWeaverVaultUnitTests is Test {
     }
 
     function test_setDonationAddress_revertsOnZero() public {
-        vm.expectRevert(YieldWeaverVault.DonationAddressZero.selector);
+        vm.expectRevert(Errors.DonationAddressZero.selector);
         vault.setDonationAddress(address(0));
     }
 
@@ -77,14 +78,14 @@ contract YieldWeaverVaultUnitTests is Test {
 
     function test_addStrategy_revertsOnDuplicate() public {
         vault.addStrategy(IYieldStrategy(address(strategyA)), 5000, true);
-        vm.expectRevert(YieldWeaverVault.StrategyAlreadyExists.selector);
+        vm.expectRevert(Errors.StrategyAlreadyExists.selector);
         vault.addStrategy(IYieldStrategy(address(strategyA)), 1000, true);
     }
 
     function test_addStrategy_revertsOnAssetMismatch() public {
         ERC20Mock altToken = new ERC20Mock();
         MockYieldStrategy badStrategy = new MockYieldStrategy(altToken);
-        vm.expectRevert(YieldWeaverVault.InvalidAsset.selector);
+        vm.expectRevert(Errors.InvalidAsset.selector);
         vault.addStrategy(IYieldStrategy(address(badStrategy)), 1000, true);
     }
 
@@ -100,7 +101,7 @@ contract YieldWeaverVaultUnitTests is Test {
     }
 
     function test_updateStrategy_revertsWhenOutOfBounds() public {
-        vm.expectRevert(abi.encodeWithSelector(YieldWeaverVault.StrategyNotActive.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(Errors.StrategyNotActive.selector, 0));
         vault.updateStrategy(0, 1000, true);
     }
 
@@ -123,13 +124,13 @@ contract YieldWeaverVaultUnitTests is Test {
     function test_setAllocations_revertsOnLengthMismatch() public {
         vault.addStrategy(IYieldStrategy(address(strategyA)), 5000, true);
         uint16[] memory allocations = new uint16[](2);
-        vm.expectRevert(YieldWeaverVault.AllocationMismatch.selector);
+        vm.expectRevert(Errors.AllocationMismatch.selector);
         vault.setAllocations(allocations);
     }
 
     function test_addStrategy_revertsWhenAllocationExceedsBasis() public {
         vault.addStrategy(IYieldStrategy(address(strategyA)), 9000, true);
-        vm.expectRevert(abi.encodeWithSelector(YieldWeaverVault.InvalidAllocationSum.selector, 11_000));
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidAllocationSum.selector, 11_000));
         vault.addStrategy(IYieldStrategy(address(strategyB)), 2000, true);
     }
 
@@ -141,7 +142,7 @@ contract YieldWeaverVaultUnitTests is Test {
         allocations[0] = 7000;
         allocations[1] = 4000;
 
-        vm.expectRevert(abi.encodeWithSelector(YieldWeaverVault.InvalidAllocationSum.selector, 11_000));
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidAllocationSum.selector, 11_000));
         vault.setAllocations(allocations);
     }
 
