@@ -258,10 +258,11 @@ contract YieldWeaverVaultUnitTests is Test {
 
         strategyA.simulateProfit(200 ether);
 
-        uint256 expectedShares = vault.previewDeposit(200 ether);
         vault.harvest();
 
-        assertEq(vault.balanceOf(donation), expectedShares, "donation shares minted");
+        uint256 donationShares = vault.balanceOf(donation);
+        uint256 donationAssets = vault.convertToAssets(donationShares);
+        assertApproxEqAbs(donationAssets, 200 ether, 1 wei, "donation minted");
         assertEq(vault.totalAssets(), 1200 ether, "total assets includes profit");
     }
 

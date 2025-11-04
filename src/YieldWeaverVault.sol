@@ -295,7 +295,7 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
         uint256 managedAfter = totalAssets();
         if (managedAfter > previousBaseline) {
             profit = managedAfter - previousBaseline;
-            _donateProfit(profit);
+            _donateProfit(profit, previousBaseline);
         } else if (managedAfter < previousBaseline) {
             loss = previousBaseline - managedAfter;
             _absorbLoss(loss);
@@ -383,10 +383,21 @@ contract YieldWeaverVault is ERC4626, Ownable2Step, ReentrancyGuard {
 
     /// @dev Mints additional shares to the donation address representing realised profit.
     /// @param _profit Amount of profit realised.
-    function _donateProfit(uint256 _profit) internal {
+    function _donateProfit(uint256 _profit, uint256 _baselineAssets) internal {
         if (_profit == 0 || donationAddress == address(0)) return;
 
-        uint256 sharesToMint = previewDeposit(_profit);
+        uint256 currentSupply = totalSupply();
+        if (currentSupply == 0) {
+            _mint(donationAddress, _profit);
+            return;
+        }
+
+        if (_baselineAssets == 0) {
+            _mint(donationAddress, _profit);
+            return;
+        }
+
+        uint256 sharesToMint = (_profit * currentSupply) / _baselineAssets;
         if (sharesToMint == 0) return;
         _mint(donationAddress, sharesToMint);
     }
