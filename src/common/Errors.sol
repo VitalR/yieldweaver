@@ -48,4 +48,7 @@ library Errors {
 
     /// @dev Thrown when attempting to accept management without a pending nominee.
     error NoPendingManagement();
+
+    /// @dev Thrown when an address is the zero address.
+    error ZeroAddress();
 }
