@@ -7,6 +7,9 @@ library Errors {
     /// @dev Thrown when an invalid ERC-20 asset address is supplied.
     error InvalidAsset();
 
+    /// @dev Thrown when an invalid name is supplied.
+    error InvalidName();
+
     /// @dev Thrown when an invalid Aave pool address is supplied.
     error InvalidPool();
 

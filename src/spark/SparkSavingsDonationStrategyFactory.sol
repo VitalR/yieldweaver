@@ -5,7 +5,7 @@ import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 import { Ownable2Step, Ownable } from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {
     YieldDonatingTokenizedStrategy
-} from "@octant-core/strategies/yieldDonating/YieldDonatingTokenizedStrategy.sol";
+} from "@octant-v2-core/strategies/yieldDonating/YieldDonatingTokenizedStrategy.sol";
 
 import { SparkSavingsDonationStrategy } from "./SparkSavingsDonationStrategy.sol";
 import { Errors } from "../common/Errors.sol";
@@ -13,8 +13,8 @@ import { Errors } from "../common/Errors.sol";
 /**
  * @title SparkSavingsDonationStrategyFactory
  * @notice Deterministic (CREATE2) factory that deploys a complete Octant v2 YDS pair:
- *         (1) a fresh {@link YieldDonatingTokenizedStrategy} and
- *         (2) a fresh {@link SparkSavingsDonationStrategy} wired to a Spark Savings Vault V2 (ERC-4626).
+ *         (1) a fresh `YieldDonatingTokenizedStrategy` and
+ *         (2) a fresh `SparkSavingsDonationStrategy` wired to a Spark Savings Vault V2 (ERC-4626).
  *
  * @dev Rationale:
  *      - `TokenizedStrategy` owns ERC-4626-like share accounting and donate/burn logic.
@@ -65,7 +65,7 @@ contract SparkSavingsDonationStrategyFactory is Ownable2Step {
      *
      * @param _sparkVault      Spark Savings Vault V2 (ERC-4626) address (e.g., spUSDC)
      * @param _asset           Underlying token accepted by the vault (must equal ISparkVault(sparkVault).asset())
-     * @param _name           Strategy name (forwarded to BaseStrategy)
+     * @param _name            Strategy name (forwarded to BaseStrategy)
      * @param _management      Management role address
      * @param _keeper          Keeper role address
      * @param _emergencyAdmin  Emergency admin role address
@@ -195,7 +195,8 @@ contract SparkSavingsDonationStrategyFactory is Ownable2Step {
         pure
         returns (bytes32)
     {
-        return keccak256(abi.encode(_sparkVault, _asset, _name, _referral, "T"));
+        bytes32 nameHash = keccak256(bytes(_name));
+        return keccak256(abi.encode(_sparkVault, _asset, nameHash, _referral, bytes1("T")));
     }
 
     /// @dev Deterministic salt for the Strategy (suffix "S" for clarity).
@@ -204,6 +205,7 @@ contract SparkSavingsDonationStrategyFactory is Ownable2Step {
         pure
         returns (bytes32)
     {
-        return keccak256(abi.encode(_sparkVault, _asset, _name, _referral, "S"));
+        bytes32 nameHash = keccak256(bytes(_name));
+        return keccak256(abi.encode(_sparkVault, _asset, nameHash, _referral, bytes1("S")));
     }
 }

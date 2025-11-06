@@ -36,15 +36,19 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
     /// @notice Spark Savings Vault being used as the yield source (e.g., spETH or spUSDC on Ethereum).
     ISparkVault public immutable sparkVault;
 
-    /// @notice Minimum idle amount (in asset base units) required to actually deploy funds.
-    /// @dev Prevents wasting gas on dust-sized deposits. Tune per asset if needed.
-    uint256 private constant ASSET_DUST = 100;
+    /// @notice Minimum idle required before deploying to the vault (asset base units).
+    /// @dev Keeps a small “warm buffer” and avoids burning gas on dust.
+    ///      Manager can tune per-asset as needed.
+    uint256 public deployThreshold;
 
     /// @notice Idle threshold (in asset units) above which keepers should `tend()` and deploy idle.
     uint256 public tendIdleThreshold = 1000;
 
     /// @notice Optional Spark referral code (0 = disabled). Applied on 3-arg `deposit()`.
     uint16 public referral;
+
+    /// @notice Emitted when the deploy threshold is updated.
+    event DeployThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
 
     /// @notice Emitted when the referral code is updated.
     event ReferralUpdated(uint16 referral);
@@ -89,6 +93,8 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
         sparkVault = ISparkVault(_sparkVault);
         referral = _referral;
 
+        _initDeployThreshold();
+
         // Max allow Spark Savings Vault to withdraw assets.
         ERC20(_asset).forceApprove(address(sparkVault), type(uint256).max);
     }
@@ -100,7 +106,8 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
     /// @dev After deposit/mint: move idle asset into the Spark Savings Vault. Uses stored `referral` if non-zero.
     /// @param _amount Amount of assets to deploy.
     function _deployFunds(uint256 _amount) internal override {
-        if (_amount < ASSET_DUST) return;
+        // Only deploy if our idle buffer is meaningful (above deployThreshold).
+        if (idle() < deployThreshold) return;
         if (referral != 0) sparkVault.deposit(_amount, address(this), referral); // Spark V2 overload.
         else sparkVault.deposit(_amount, address(this)); // ERC-4626 standard deposit.
     }
@@ -116,27 +123,31 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
 
     /// @dev Keeper/management path: return total assets (idle + wrapper assets) in underlying units.
     /// @notice Base compares this vs last report and mints/burns donation shares accordingly.
-    function _harvestAndReport() internal override returns (uint256 _totalAssets) {
+    function _harvestAndReport() internal view override returns (uint256 _totalAssets) {
         // Get strategy's share balance in the compounder vault.
         uint256 shares = sparkVault.balanceOf(address(this));
         uint256 vaultAssets = sparkVault.convertToAssets(shares);
 
-        // Include idle funds as per BaseStrategy specification.
-        uint256 idleAssets = asset.balanceOf(address(this));
-
-        _totalAssets = vaultAssets + idleAssets;
+        _totalAssets = vaultAssets + idle();
     }
 
     /// @notice Best-effort pull of funds after shutdown (called via Tokenized.emergencyWithdraw()).
     /// @dev     Does not realize PnL; management can follow with a `report()` to account final totals.
     /// @param _amount Amount of assets to withdraw.
     function _emergencyWithdraw(uint256 _amount) internal override {
-        uint256 idle = asset.balanceOf(address(this));
-        if (idle < _amount) {
-            uint256 toPull = _amount - idle;
+        uint256 _idle = asset.balanceOf(address(this));
+        if (_idle < _amount) {
+            uint256 toPull = _amount - _idle;
             // If vault can’t satisfy, swallow and return what we have; ops can try smaller chunks.
             try sparkVault.withdraw(toPull, address(this), address(this)) { } catch { }
         }
+    }
+
+    /// @notice Returns true when keepers should call `tend()` (idle above threshold and not shutdown).
+    function tendTrigger() public view override returns (bool, bytes memory) {
+        if (TokenizedStrategy.isShutdown()) return (false, bytes(""));
+        bool should = idle() >= tendIdleThreshold;
+        return (should, bytes(""));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -161,9 +172,8 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
             return lim;
         } catch {
             // Otherwise, advertise our on-hand idle + what our shares are worth.
-            uint256 idle = asset.balanceOf(address(this));
             uint256 shares = sparkVault.balanceOf(address(this));
-            return idle + sparkVault.convertToAssets(shares);
+            return idle() + sparkVault.convertToAssets(shares);
         }
     }
 
@@ -174,7 +184,7 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
     /// @notice Returns true when keepers should call `tend()` (idle above threshold and not shutdown).
     function _tendTrigger() internal view override returns (bool) {
         if (TokenizedStrategy.isShutdown()) return false;
-        return asset.balanceOf(address(this)) >= tendIdleThreshold;
+        return idle() >= tendIdleThreshold;
     }
 
     /// @notice Keeper maintenance hook to deploy idle funds in batch between reports.
@@ -197,6 +207,23 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
     function setReferral(uint16 _referral) external onlyManagement {
         referral = _referral;
         emit ReferralUpdated(_referral);
+    }
+
+    /// @notice Manager-setter with no upper bound (0 allowed to disable).
+    /// @param _newThreshold New deploy threshold (asset base units).
+    function setDeployThreshold(uint256 _newThreshold) external onlyManagement {
+        emit DeployThresholdUpdated(deployThreshold, _newThreshold);
+        deployThreshold = _newThreshold;
+    }
+
+    /// @dev Call this once in your initializer/constructor path.
+    function _initDeployThreshold() internal {
+        // Default to ~0.0001 token units regardless of decimals.
+        // For 6-dec (USDC): 10**(6-4)=100 (0.0001 USDC)
+        // For 18-dec:       10**(18-4)=1e14 (0.0001 tokens)
+        uint8 dec = ERC20(asset).decimals();
+        uint256 def = (dec >= 4) ? 10 ** (dec - 4) : 1; // Safe fallback for very low-dec assets.
+        deployThreshold = def;
     }
 
     /*//////////////////////////////////////////////////////////////
