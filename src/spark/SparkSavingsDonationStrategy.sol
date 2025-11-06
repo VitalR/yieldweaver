@@ -4,7 +4,6 @@ pragma solidity 0.8.30;
 import { BaseStrategy } from "@octant-v2-core/core/BaseStrategy.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 import { ISparkVault } from "./ISparkVault.sol";
 import { Errors } from "../common/Errors.sol";
@@ -25,28 +24,49 @@ import { Errors } from "../common/Errors.sol";
 ///      References:
 ///      - Spark Savings Vaults V2 overview & ERC-4626 surface (VSR/chi/referral).
 ///        https://docs.spark.fi/dev/savings/spark-vaults-v2
-///      - sUSDC/sUSDS/sDAI ERC-4626 wrappers (Sky).
-///        https://github.com/sky-ecosystem/sdai/blob/susds/src/SUsds.sol
 ///      - Octant v2: Writing a YDS strategy (ERC-4626 direct-deposit pattern).
 ///        https://docs.v2.octant.build/docs/yield_donating_strategy/introduction-to-yds
 contract SparkSavingsDonationStrategy is BaseStrategy {
     using SafeERC20 for ERC20;
 
-    /// @notice @notice Spark Savings Vault being used as the yield source (e.g., spETH or spUSDC on Ethereum).
+    /*//////////////////////////////////////////////////////////////
+                        STORAGE & CONSTANTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Spark Savings Vault being used as the yield source (e.g., spETH or spUSDC on Ethereum).
     ISparkVault public immutable sparkVault;
 
-    /// @notice Optional Spark referral code (0 = disabled). Applied on 3-arg `deposit()`.
-    uint16 public immutable referral;
+    /// @notice Minimum idle amount (in asset base units) required to actually deploy funds.
+    /// @dev Prevents wasting gas on dust-sized deposits. Tune per asset if needed.
+    uint256 private constant ASSET_DUST = 100;
 
-    /// @param _sparkVault       Address of the Spark Savings Vault (must accept `_asset`)
-    /// @param _asset            Address of the Spark ERC-20 asset (e.g., USDS, DAI, USDC)
-    /// @param _name             Strategy name
-    /// @param _management       Management role
-    /// @param _keeper           Keeper role
-    /// @param _emergencyAdmin   Emergency admin role
-    /// @param _donationAddress  Donation sink (receives minted yield shares on profit)
-    /// @param _enableBurning    Enable donation-share burning on loss
-    /// @param _tokenized        TokenizedStrategy implementation address
+    /// @notice Idle threshold (in asset units) above which keepers should `tend()` and deploy idle.
+    uint256 public tendIdleThreshold = 1000;
+
+    /// @notice Optional Spark referral code (0 = disabled). Applied on 3-arg `deposit()`.
+    uint16 public referral;
+
+    /// @notice Emitted when the referral code is updated.
+    event ReferralUpdated(uint16 referral);
+
+    /// @notice Emitted when the idle deployment threshold is updated.
+    event TendThresholdUpdated(uint256 threshold);
+
+    /*//////////////////////////////////////////////////////////////
+                            CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Constructs the Spark Savings Yield Donating Strategy.
+    /// @param _sparkVault       Address of the Spark Savings Vault (must accept `_asset`).
+    /// @param _asset            Address of the Spark ERC-20 asset (e.g., USDS, DAI, USDC).
+    /// @param _name             Strategy name.
+    /// @param _management       Management role.
+    /// @param _keeper           Keeper role.
+    /// @param _emergencyAdmin   Emergency admin role.
+    /// @param _donationAddress  Donation sink (receives minted yield shares on profit).
+    /// @param _enableBurning    Enable donation-share burning on loss.
+    /// @param _tokenized        TokenizedStrategy implementation address (must implement `ITokenizedStrategy`).
+    /// @param _referral         Spark referral code (0 = disabled).
     constructor(
         address _sparkVault,
         address _asset,
@@ -74,17 +94,19 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         REQUIRED YDS OVERRIDES
+                    OVERRIDES FROM YDS BASE STRATEGY
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev After deposit/mint: move idle asset into the Spark Savings Vault.
-    function _deployFunds(uint256 _amount, uint16 _referral) internal override {
-        if (_amount == 0) return;
-        if (_referral != 0) sparkVault.deposit(_amount, address(this), _referral);
-        else sparkVault.deposit(_amount, address(this));
+    /// @dev After deposit/mint: move idle asset into the Spark Savings Vault. Uses stored `referral` if non-zero.
+    /// @param _amount Amount of assets to deploy.
+    function _deployFunds(uint256 _amount) internal override {
+        if (_amount < ASSET_DUST) return;
+        if (referral != 0) sparkVault.deposit(_amount, address(this), referral); // Spark V2 overload.
+        else sparkVault.deposit(_amount, address(this)); // ERC-4626 standard deposit.
     }
 
     /// @dev During withdraw/redeem: pull asset back out of the Spark Savings Vault.
+    /// @param _amount Amount of assets to withdraw.
     function _freeFunds(uint256 _amount) internal override {
         if (_amount == 0) return;
         // If upstream has limits, withdraw what is possible or revert (depending on your policy).
@@ -95,14 +117,26 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
     /// @dev Keeper/management path: return total assets (idle + wrapper assets) in underlying units.
     /// @notice Base compares this vs last report and mints/burns donation shares accordingly.
     function _harvestAndReport() internal override returns (uint256 _totalAssets) {
-        // Get strategy's share balance in the compounder vault
+        // Get strategy's share balance in the compounder vault.
         uint256 shares = sparkVault.balanceOf(address(this));
         uint256 vaultAssets = sparkVault.convertToAssets(shares);
 
-        // Include idle funds as per BaseStrategy specification
+        // Include idle funds as per BaseStrategy specification.
         uint256 idleAssets = asset.balanceOf(address(this));
 
         _totalAssets = vaultAssets + idleAssets;
+    }
+
+    /// @notice Best-effort pull of funds after shutdown (called via Tokenized.emergencyWithdraw()).
+    /// @dev     Does not realize PnL; management can follow with a `report()` to account final totals.
+    /// @param _amount Amount of assets to withdraw.
+    function _emergencyWithdraw(uint256 _amount) internal override {
+        uint256 idle = asset.balanceOf(address(this));
+        if (idle < _amount) {
+            uint256 toPull = _amount - idle;
+            // If vault can’t satisfy, swallow and return what we have; ops can try smaller chunks.
+            try sparkVault.withdraw(toPull, address(this), address(this)) { } catch { }
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -122,14 +156,91 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
 
     /// @dev Mirror Spark Savings Vault limits into strategy-level limits.
     function availableWithdrawLimit(address) public view override returns (uint256) {
-        // Honour upstream maxWithdraw for this address if present
+        // Honour upstream maxWithdraw for this address if present.
         try sparkVault.maxWithdraw(address(this)) returns (uint256 lim) {
             return lim;
         } catch {
-            // Otherwise, advertise our on-hand idle + what our shares are worth
+            // Otherwise, advertise our on-hand idle + what our shares are worth.
             uint256 idle = asset.balanceOf(address(this));
             uint256 shares = sparkVault.balanceOf(address(this));
             return idle + sparkVault.convertToAssets(shares);
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                OPS / TEND CONFIG (KEEPERS / MANAGEMENT)
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns true when keepers should call `tend()` (idle above threshold and not shutdown).
+    function _tendTrigger() internal view override returns (bool) {
+        if (TokenizedStrategy.isShutdown()) return false;
+        return asset.balanceOf(address(this)) >= tendIdleThreshold;
+    }
+
+    /// @notice Keeper maintenance hook to deploy idle funds in batch between reports.
+    /// @param _totalIdle Current idle funds available to be deployed (passed from Tokenized).
+    function _tend(uint256 _totalIdle) internal override {
+        if (_totalIdle >= tendIdleThreshold && !TokenizedStrategy.isShutdown()) {
+            _deployFunds(_totalIdle);
+        }
+    }
+
+    /// @notice Sets the idle deployment threshold used by keepers in `tend()`.
+    /// @param _threshold Amount (in asset base units) above which `tend()` will deploy idle funds.
+    function setTendThreshold(uint256 _threshold) external onlyManagement {
+        tendIdleThreshold = _threshold;
+        emit TendThresholdUpdated(_threshold);
+    }
+
+    /// @notice Updates the referral code for staking.
+    /// @param _referral Referral code (uint16)
+    function setReferral(uint16 _referral) external onlyManagement {
+        referral = _referral;
+        emit ReferralUpdated(_referral);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                      OPS / OBSERVABILITY HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns current Vault Savings Rate (VSR) if exposed by the vault; 0 if not supported.
+    /// @dev    Useful for dashboards/keepers to understand expected accrual velocity without simulating.
+    function sparkVsr() external view returns (uint256) {
+        try sparkVault.vsr() returns (uint256 v) {
+            return v;
+        } catch {
+            return 0;
+        }
+    }
+
+    /// @notice Returns current accumulator (chi) if exposed by the vault.
+    /// @dev    Some vaults expose `nowChi()` (up-to-block), others expose `chi()`; we try both.
+    ///         Observing chi growth over time is a sanity-check that interest accrues as expected.
+    function sparkChi() external view returns (uint256) {
+        try sparkVault.nowChi() returns (uint256 n) {
+            return n;
+        } catch {
+            try sparkVault.chi() returns (uint192 c) {
+                return uint256(c);
+            } catch {
+                return 0;
+            }
+        }
+    }
+
+    /// @notice Current idle balance in underlying asset.
+    function idle() public view returns (uint256) {
+        return asset.balanceOf(address(this));
+    }
+
+    /// @notice Current deployed balance as underlying (convertToAssets(shares)).
+    function deployed() public view returns (uint256) {
+        uint256 sh = sparkVault.balanceOf(address(this));
+        return sparkVault.convertToAssets(sh);
+    }
+
+    /// @notice Convenience total = idle + deployed (same formula used in harvest).
+    function totalView() external view returns (uint256) {
+        return idle() + deployed();
     }
 }
