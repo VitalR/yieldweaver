@@ -166,3 +166,4 @@ interface ISparkVault is IERC20Permit, IERC4626, IAccessControlEnumerable {
      */
     function version() external view returns (string memory);
 }
+

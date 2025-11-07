@@ -6,7 +6,7 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { IPool } from "src/external/aave/IPool.sol";
-import { Errors } from "../common/Errors.sol";
+import { Errors } from "../../common/Errors.sol";
 
 /// @title SparkLendDonationStrategy
 /// @notice Yield-Donating Strategy (YDS) that integrates **SparkLend** (Aave v3-style pool) by supplying the underlying
@@ -230,3 +230,4 @@ contract SparkLendDonationStrategy is BaseStrategy {
         return idle() + deployed();
     }
 }
+

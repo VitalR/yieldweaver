@@ -9,7 +9,7 @@ import {
 } from "@octant-v2-core/strategies/yieldDonating/YieldDonatingTokenizedStrategy.sol";
 import { ITokenizedStrategy } from "@octant-v2-core/core/interfaces/ITokenizedStrategy.sol";
 
-import { SparkSavingsDonationStrategy } from "src/spark/SparkSavingsDonationStrategy.sol";
+import { SparkSavingsDonationStrategy } from "src/spark/savings/SparkSavingsDonationStrategy.sol";
 import { MockSparkVault } from "test/mocks/MockSparkVault.sol";
 import { MockUSDC } from "test/mocks/MockUSDC.sol";
 

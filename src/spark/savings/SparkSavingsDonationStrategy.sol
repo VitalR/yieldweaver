@@ -6,7 +6,7 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { ISparkVault } from "./interfaces/ISparkVault.sol";
-import { Errors } from "../common/Errors.sol";
+import { Errors } from "../../common/Errors.sol";
 
 /// @title SparkSavingsDonationStrategy
 /// @notice Yield-Donating Strategy (YDS) that integrates **Spark Savings Vaults V2** (e.g. spUSDC/spUSDT/spETH),
@@ -284,3 +284,4 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
         return idle() + deployed();
     }
 }
+

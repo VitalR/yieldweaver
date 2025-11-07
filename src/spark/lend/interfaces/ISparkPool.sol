@@ -19,3 +19,4 @@ interface ISparkPool {
     /// @return withdrawnAmount The actual amount withdrawn.
     function withdraw(address asset, uint256 amount, address to) external returns (uint256 withdrawnAmount);
 }
+
