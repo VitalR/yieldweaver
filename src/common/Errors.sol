@@ -4,6 +4,15 @@ pragma solidity 0.8.30;
 /// @title YieldWeaverErrors
 /// @notice Common custom errors shared across YieldWeaver contracts.
 library Errors {
+    /// @dev Thrown when a strategy is already deployed.
+    error AlreadyDeployed();
+
+    /// @dev Thrown when allocations array length mismatches the number of strategies.
+    error AllocationMismatch();
+
+    /// @dev Thrown when a donation address is set to the zero address.
+    error DonationAddressZero();
+
     /// @dev Thrown when an invalid ERC-20 asset address is supplied.
     error InvalidAsset();
 
@@ -25,18 +34,6 @@ library Errors {
     /// @dev Thrown when strategy allocations exceed the allowed basis points.
     error InvalidAllocationSum(uint256 allocationSum);
 
-    /// @dev Thrown when allocations array length mismatches the number of strategies.
-    error AllocationMismatch();
-
-    /// @dev Thrown when a donation address is set to the zero address.
-    error DonationAddressZero();
-
-    /// @dev Thrown when a strategy is registered more than once.
-    error StrategyAlreadyExists();
-
-    /// @dev Thrown when accessing a strategy index that is inactive or out of bounds.
-    error StrategyNotActive(uint256 strategyId);
-
     /// @dev Thrown when caller is not authorized vault contract.
     error NotVault();
 
@@ -51,6 +48,12 @@ library Errors {
 
     /// @dev Thrown when attempting to accept management without a pending nominee.
     error NoPendingManagement();
+
+    /// @dev Thrown when a strategy is registered more than once.
+    error StrategyAlreadyExists();
+
+    /// @dev Thrown when accessing a strategy index that is inactive or out of bounds.
+    error StrategyNotActive(uint256 strategyId);
 
     /// @dev Thrown when an address is the zero address.
     error ZeroAddress();

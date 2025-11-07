@@ -142,7 +142,7 @@ contract SparkSavingsDonationStrategyUnitTest is Test {
     // ---------------------------------------------------------------------
 
     function test_constructorSetsState() public view {
-        assertEq(address(strategy.sparkVault()), address(sparkVault), "sparkVault mismatch");
+        assertEq(address(strategy.SPARK_VAULT()), address(sparkVault), "sparkVault mismatch");
         // Tokenized storage-accessors are on the tokenized surface:
         assertEq(tokenized.asset(), address(usdc), "asset mismatch");
         assertEq(tokenized.management(), management, "management mismatch");
