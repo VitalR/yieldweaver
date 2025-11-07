@@ -1,0 +1,27 @@
+{
+  "core": {
+    "chainId": 8,
+    "strategy": "0xA506072661441Aee374f35390D8A459aba9a4322",
+    "tokenized": "0x6BfF139Ca54Ae7d3890F2F8d69Ec026e5ee7ba78",
+    "sparkVault": "0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d",
+    "asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "user": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623"
+  },
+  "flow": {
+    "doDeposit": false,
+    "doWithdraw": true,
+    "sleepSeconds": 0,
+    "deposited": 0,
+    "withdrawn": 25000000,
+    "withdrawAssetsOverride": 0,
+    "withdrawBps": 2500,
+    "withdrawLimitBefore": 99999999,
+    "withdrawLimitAfter": 74999998
+  },
+  "state": {
+    "idle": 0,
+    "shares": 74842256,
+    "deployed": 74999998,
+    "total": 74999998
+  }
+}

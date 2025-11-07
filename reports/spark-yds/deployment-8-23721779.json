@@ -1,0 +1,29 @@
+{
+  "core": {
+    "chainId": 8,
+    "factory": "0x14c35DdF059f82f2Eff39B6cA5807f5090496fBC",
+    "sparkVault": "0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d",
+    "asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "name": "Spark USDC YDS Tokenized",
+    "enableBurning": true,
+    "referral": 0
+  },
+  "addresses": {
+    "tokenized": "0x06646B4e874391529175A90706de0d822e2C2948",
+    "strategy": "0xb92df58df73f8E412C9138655f94E2C71329B0b6"
+  },
+  "roles": {
+    "management": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623",
+    "keeper": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623",
+    "emergencyAdmin": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623",
+    "donationAddress": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623"
+  },
+  "tx": {
+    "deployer": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623",
+    "nonceStart": 1,
+    "factoryNonce": 1,
+    "pairNonce": 2,
+    "deployedFactory": true,
+    "factoryAddress": "0x14c35DdF059f82f2Eff39B6cA5807f5090496fBC"
+  }
+}
