@@ -2,10 +2,16 @@
 src = "src"
 out = "out"
 libs = ["lib", "dependencies"]
+fs_permissions = [
+  { access = "read", path = "./broadcast" },
+  { access = "read", path = "./reports" },
+  { access = "write", path = "./reports" }
+]
 
 solc = "0.8.30"
 optimizer = true
 optimizer_runs = 1000
+viaIR = true
 
 [fmt]
 tab_width = 4
@@ -16,9 +22,15 @@ quote_style = "double"
 wrap_comments = true
 number_underscore = "thousands"
 
+[soldeer]
+recursive_deps = true
+
 [dependencies]
 forge-std = "1.11.0"
 octant-v2-core = { version = "v0.8.0-develop.0", git = "https://github.com/golemfoundation/octant-v2-core.git", rev = "58d698ee0cb0a7c993c92adc6239f22ed5140ac2" }
 openzeppelin-contracts = { version = "v5.5.0@fcbae5394ae8ad52d8e580a3477db99814b9d565", git = "https://github.com/OpenZeppelin/openzeppelin-contracts.git", rev = "8631702babdb0a3890c470e0c9aebf9bc28c3637" }
+
+[rpc_endpoints]
+tenderlyVNet = "https://virtual.mainnet.eu.rpc.tenderly.co/82c86106-662e-4d7f-a974-c311987358ff"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
