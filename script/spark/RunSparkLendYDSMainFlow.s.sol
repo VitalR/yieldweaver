@@ -4,49 +4,20 @@ pragma solidity 0.8.30;
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { ITokenizedStrategy } from "@octant-v2-core/core/interfaces/ITokenizedStrategy.sol";
 
-import { BaseScript } from "../common/BaseScript.sol";
+import { BaseScript } from "script/common/BaseScript.sol";
 import { console2 } from "forge-std/console2.sol";
-import { ISparkVault } from "src/spark/savings/interfaces/ISparkVault.sol";
 
 interface ISparkStrategyViews {
     function availableWithdrawLimit(address owner) external view returns (uint256);
 }
 
-/// @notice Main-flow runner against a deployed Spark YDS pair.
-/// Env (required):
-///   DEPLOYER_PRIVATE_KEY   : uint (or use --private-key at CLI)
-///   STRATEGY               : address (SparkSavingsDonationStrategy)
-///   TOKENIZED              : address (paired TokenizedStrategy)
-///   SPARK_VAULT            : address (spUSDC / spUSDT / spETH ...)
-///   UNDERLYING             : address (USDC / USDT / WETH ...)
-///   NAME                   : string  (strategy name for logs)
-///
-/// Env (optional):
-///   USER                   : address (who deposits & receives withdrawals; defaults to deployer)
-///   AMOUNT                 : uint    (in underlying base units; default 10_000 * 10**decimals)
-///   DO_APPROVE             : bool    (default true; skip when allowance pre-set)
-///   DO_DEPOSIT             : bool    (default true; disable for withdraw-only runs)
-///   DO_TEND                : bool    (default false; run a separate tend pass when needed)
-///   DO_REPORT              : bool    (default false; profit may be 0 on fresh block)
-///   DO_WITHDRAW            : bool    (defaults to WITHDRAW_BPS > 0)
-///   WITHDRAW_ALL           : bool    (withdraw the full current limit)
-///   WITHDRAW_BPS           : uint    (0..10_000; default 0 = skip withdraw)
-///   WITHDRAW_ASSETS        : uint    (explicit amount override; takes priority over WITHDRAW_BPS)
-///   SLEEP_SECONDS          : uint    (sleep to let interest accrue on slow chains; default 0)
-///   DO_INSPECT             : bool    (default false; log position snapshot without broadcasting)
-///
-/// Example:
-///    set -a; source .env; set +a
-///    forge script script/spark/RunSparkYDSMainFlow.s.sol:RunSparkYDSMainFlowScript \
-///      --rpc-url "$ETH_RPC_URL" --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast -vvvv
-contract RunSparkYDSMainFlowScript is BaseScript {
+contract RunSparkLendYDSMainFlowScript is BaseScript {
     uint256 constant BPS_DENOMINATOR = 10_000;
 
-    // env state
     uint256 deployerKey;
     address strategy;
     address tokenized;
-    address sparkVault;
+    address aToken;
     address asset;
     string name;
 
@@ -65,7 +36,6 @@ contract RunSparkYDSMainFlowScript is BaseScript {
 
     struct Position {
         uint256 idle;
-        uint256 vaultShares;
         uint256 deployed;
         uint256 total;
         uint256 userShares;
@@ -73,10 +43,61 @@ contract RunSparkYDSMainFlowScript is BaseScript {
         uint256 withdrawLimit;
     }
 
+    function setUp() public {
+        deployerKey = _envUintOr("DEPLOYER_PRIVATE_KEY", 0);
+        strategy = _addrOrZero("STRATEGY_LEND");
+        if (strategy == address(0)) {
+            strategy = vm.envAddress("STRATEGY");
+        }
+        tokenized = _addrOrZero("TOKENIZED_LEND");
+        if (tokenized == address(0)) {
+            tokenized = vm.envAddress("TOKENIZED");
+        }
+        aToken = _addrOrZero("SPARK_ATOKEN");
+        if (aToken == address(0)) {
+            aToken = vm.envAddress("ATOKEN");
+        }
+        asset = _addrOrZero("UNDERLYING_LEND");
+        if (asset == address(0)) {
+            asset = vm.envAddress("UNDERLYING");
+        }
+        name = _envStringOr("NAME_LEND", _envStringOr("NAME", ""));
+
+        user = _addrOrZero("USER");
+        if (user == address(0)) {
+            if (deployerKey != 0) user = vm.addr(deployerKey);
+            else revert("USER required when DEPLOYER_PRIVATE_KEY unset");
+        }
+        if (deployerKey != 0) require(user == vm.addr(deployerKey), "USER must equal deployer signer");
+
+        doApprove = _envBoolOr("DO_APPROVE", true);
+        doDeposit = _envBoolOr("DO_DEPOSIT", true);
+        doTend = _envBoolOr("DO_TEND", false);
+        doReport = _envBoolOr("DO_REPORT", false);
+        withdrawBps = _envUintOr("WITHDRAW_BPS", 0);
+        doWithdraw = _envBoolOr("DO_WITHDRAW", withdrawBps > 0);
+        doWithdrawAll = _envBoolOr("WITHDRAW_ALL", false);
+        doInspect = _envBoolOr("DO_INSPECT", false);
+        sleepSecs = _envUintOr("SLEEP_SECONDS", 0);
+        withdrawAssetsOverride = _envUintOr("WITHDRAW_ASSETS", 0);
+
+        uint8 dec = ERC20(asset).decimals();
+        amount = _envUintOr("AMOUNT", 10_000 * (10 ** dec));
+
+        require(strategy != address(0) && tokenized != address(0), "zero strategy/tokenized");
+        require(aToken != address(0) && asset != address(0), "zero aToken/asset");
+        require(withdrawBps <= BPS_DENOMINATOR, "WITHDRAW_BPS > 100%");
+        if (doDeposit) {
+            require(amount > 0, "amount zero");
+            require(ERC20(asset).balanceOf(user) >= amount, "insufficient user balance");
+        }
+        if (withdrawAssetsOverride > 0) doWithdraw = true;
+        if (doWithdrawAll) doWithdraw = true;
+    }
+
     function _snapshotPosition() internal view returns (Position memory pos) {
         pos.idle = ERC20(asset).balanceOf(strategy);
-        pos.vaultShares = ERC20(sparkVault).balanceOf(strategy);
-        pos.deployed = ISparkVault(sparkVault).convertToAssets(pos.vaultShares);
+        pos.deployed = ERC20(aToken).balanceOf(strategy);
         pos.total = pos.idle + pos.deployed;
         pos.userShares = ITokenizedStrategy(strategy).balanceOf(user);
         try ITokenizedStrategy(strategy).convertToAssets(pos.userShares) returns (uint256 assetsOut) {
@@ -93,73 +114,13 @@ contract RunSparkYDSMainFlowScript is BaseScript {
         console2.log("User Assets      :", pos.userAssets);
         console2.log("Withdraw Limit   :", pos.withdrawLimit);
         console2.log("Strategy Idle    :", pos.idle);
-        console2.log("Strategy Shares  :", pos.vaultShares);
-        console2.log("Strategy Deployed:", pos.deployed);
+        console2.log("Deployed (aToken):", pos.deployed);
         console2.log("Strategy Total   :", pos.total);
-    }
-
-    function setUp() public {
-        deployerKey = _envUintOr("DEPLOYER_PRIVATE_KEY", 0);
-
-        strategy = vm.envAddress("STRATEGY");
-        tokenized = vm.envAddress("TOKENIZED");
-        sparkVault = vm.envAddress("SPARK_VAULT");
-        asset = vm.envAddress("UNDERLYING");
-        name = vm.envString("NAME");
-
-        // Optional knobs
-        user = _addrOrZero("USER");
-        if (user == address(0)) {
-            if (deployerKey != 0) {
-                user = vm.addr(deployerKey);
-            } else {
-                revert("USER required when DEPLOYER_PRIVATE_KEY unset");
-            }
-        }
-        if (deployerKey != 0) {
-            require(user == vm.addr(deployerKey), "USER must equal deployer signer");
-        }
-
-        doApprove = _envBoolOr("DO_APPROVE", true);
-        doDeposit = _envBoolOr("DO_DEPOSIT", true);
-        doTend = _envBoolOr("DO_TEND", false);
-        doReport = _envBoolOr("DO_REPORT", false);
-        withdrawBps = _envUintOr("WITHDRAW_BPS", 0);
-        doWithdraw = _envBoolOr("DO_WITHDRAW", withdrawBps > 0);
-        doWithdrawAll = _envBoolOr("WITHDRAW_ALL", false);
-        doInspect = _envBoolOr("DO_INSPECT", false);
-        sleepSecs = _envUintOr("SLEEP_SECONDS", 0);
-        withdrawAssetsOverride = _envUintOr("WITHDRAW_ASSETS", 0);
-
-        // amount default = 10_000 * 10**decimals
-        uint8 dec = ERC20(asset).decimals();
-        uint256 def = 10_000 * (10 ** dec);
-        amount = _envUintOr("AMOUNT", def);
-
-        if (withdrawAssetsOverride > 0) {
-            doWithdraw = true;
-        }
-        if (doWithdrawAll) {
-            doWithdraw = true;
-        }
-
-        // Light sanity
-        require(strategy != address(0) && tokenized != address(0), "zero strategy/tokenized");
-        require(sparkVault != address(0) && asset != address(0), "zero sparkVault/asset");
-        require(ISparkVault(sparkVault).asset() == asset, "vault.asset() mismatch");
-        require(withdrawBps <= BPS_DENOMINATOR, "WITHDRAW_BPS > 100%");
-        if (doDeposit) {
-            require(amount > 0, "amount zero");
-            uint256 bal = ERC20(asset).balanceOf(user);
-            require(bal >= amount, "insufficient user balance");
-        }
     }
 
     function run() public {
         Position memory pre = _snapshotPosition();
-        if (doInspect) {
-            _logPosition("Pre", pre);
-        }
+        if (doInspect) _logPosition("Pre", pre);
 
         uint256 deposited;
         uint256 withdrawn;
@@ -169,34 +130,15 @@ contract RunSparkYDSMainFlowScript is BaseScript {
         uint256 withdrawLimitAfter = withdrawLimitBefore;
 
         bool requiresBroadcast = doDeposit || doTend || doReport || doWithdraw;
-
         if (requiresBroadcast) {
             if (deployerKey != 0) vm.startBroadcast(deployerKey);
-            else vm.startBroadcast(); // picks up --private-key
-
-            if (doDeposit) {
-                deposited = _executeDeposit();
-            }
-
-            if (doTend) {
-                _executeTend();
-            }
-
-            if (sleepSecs > 0) {
-                vm.sleep(sleepSecs);
-            }
-
-            if (doReport) {
-                (profit, loss) = _executeReport();
-            }
-
+            else vm.startBroadcast();
+            if (doDeposit) deposited = _executeDeposit();
+            if (doTend) _call(strategy, abi.encodeWithSignature("tend()"), "tend failed");
+            if (sleepSecs > 0) vm.sleep(sleepSecs);
+            if (doReport) (profit, loss) = _report();
             withdrawLimitBefore = _readWithdrawLimit();
-            if (doWithdraw) {
-                (withdrawn, withdrawLimitAfter) = _executeWithdraw(withdrawLimitBefore);
-            } else {
-                withdrawLimitAfter = withdrawLimitBefore;
-            }
-
+            if (doWithdraw) (withdrawn, withdrawLimitAfter) = _executeWithdraw(withdrawLimitBefore);
             vm.stopBroadcast();
         }
 
@@ -207,20 +149,14 @@ contract RunSparkYDSMainFlowScript is BaseScript {
         }
 
         _logSummary(pre, post, deposited, withdrawn, withdrawLimitBefore, withdrawLimitAfter, profit, loss);
-
-        if (doInspect && requiresBroadcast) {
-            _logPosition("Post", post);
-        }
+        if (doInspect && requiresBroadcast) _logPosition("Post", post);
 
         if (requiresBroadcast) {
             _writeReport(pre, post, deposited, withdrawn, withdrawLimitBefore, withdrawLimitAfter, profit, loss);
         }
     }
 
-    // ---------------- internal helpers ----------------
-
     function _report() internal returns (uint256 profit, uint256 loss) {
-        // TokenizedImpl::report()
         (bool ok, bytes memory data) = strategy.call(abi.encodeWithSignature("report()"));
         require(ok, "report failed");
         (profit, loss) = abi.decode(data, (uint256, uint256));
@@ -234,27 +170,15 @@ contract RunSparkYDSMainFlowScript is BaseScript {
     function _safeApproveFromUser(address token, address spender, uint256 amt) internal {
         uint256 current = ERC20(token).allowance(user, spender);
         if (current < amt) {
-            if (current != 0) {
-                ERC20(token).approve(spender, 0);
-            }
+            if (current != 0) ERC20(token).approve(spender, 0);
             ERC20(token).approve(spender, amt);
         }
     }
 
     function _executeDeposit() internal returns (uint256) {
-        if (doApprove) {
-            _safeApproveFromUser(asset, strategy, amount);
-        }
+        if (doApprove) _safeApproveFromUser(asset, strategy, amount);
         _call(strategy, abi.encodeWithSignature("deposit(uint256,address)", amount, user), "deposit failed");
         return amount;
-    }
-
-    function _executeTend() internal {
-        _call(strategy, abi.encodeWithSignature("tend()"), "tend failed (is shutdown?)");
-    }
-
-    function _executeReport() internal returns (uint256 profit, uint256 loss) {
-        return _report();
     }
 
     function _executeWithdraw(uint256 withdrawLimitBefore)
@@ -264,15 +188,10 @@ contract RunSparkYDSMainFlowScript is BaseScript {
         uint256 assetsToWithdraw;
         if (doWithdrawAll) {
             uint256 userShares = ITokenizedStrategy(strategy).balanceOf(user);
-            if (userShares == 0) {
-                console2.log("Withdraw-all skipped: user has no shares");
-                return (0, withdrawLimitBefore);
-            }
+            if (userShares == 0) return (0, withdrawLimitBefore);
             assetsToWithdraw = withdrawLimitBefore;
             try ITokenizedStrategy(strategy).convertToAssets(userShares) returns (uint256 userAssets) {
-                if (userAssets > 0 && userAssets < assetsToWithdraw) {
-                    assetsToWithdraw = userAssets;
-                }
+                if (userAssets > 0 && userAssets < assetsToWithdraw) assetsToWithdraw = userAssets;
             } catch { }
         } else {
             assetsToWithdraw = _resolveWithdrawAssets();
@@ -297,9 +216,7 @@ contract RunSparkYDSMainFlowScript is BaseScript {
     }
 
     function _resolveWithdrawAssets() internal view returns (uint256) {
-        if (withdrawAssetsOverride > 0) {
-            return withdrawAssetsOverride;
-        }
+        if (withdrawAssetsOverride > 0) return withdrawAssetsOverride;
         return (amount * withdrawBps) / BPS_DENOMINATOR;
     }
 
@@ -313,7 +230,7 @@ contract RunSparkYDSMainFlowScript is BaseScript {
         uint256 profit,
         uint256 loss
     ) internal view {
-        console2.log("=== Spark YDS Flow ===");
+        console2.log("=== SparkLend YDS Flow ===");
         console2.log("Chain            :", block.chainid);
         console2.log("Strategy         :", strategy);
         console2.log("User             :", user);
@@ -330,14 +247,8 @@ contract RunSparkYDSMainFlowScript is BaseScript {
         console2.log("User Shares (post):", postPos.userShares);
         console2.log("User Assets (pre) :", prePos.userAssets);
         console2.log("User Assets (post):", postPos.userAssets);
-        console2.log("Idle (post)      :", postPos.idle);
-        console2.log("Vault Shares (post):", postPos.vaultShares);
-        console2.log("Deployed (post)  :", postPos.deployed);
-        console2.log("Total (post)     :", postPos.total);
-        if (doReport) {
-            console2.log("Profit           :", profit);
-            console2.log("Loss             :", loss);
-        }
+        if (doReport) console2.log("Profit           :", profit);
+        console2.log("Loss             :", loss);
     }
 
     function _writeReport(
@@ -371,8 +282,8 @@ contract RunSparkYDSMainFlowScript is BaseScript {
             "\"tokenized\":\"",
             vm.toString(tokenized),
             "\",",
-            "\"sparkVault\":\"",
-            vm.toString(sparkVault),
+            "\"aToken\":\"",
+            vm.toString(aToken),
             "\",",
             "\"asset\":\"",
             vm.toString(asset),
@@ -424,9 +335,6 @@ contract RunSparkYDSMainFlowScript is BaseScript {
             "\"idle\":",
             vm.toString(prePos.idle),
             ",",
-            "\"vaultShares\":",
-            vm.toString(prePos.vaultShares),
-            ",",
             "\"deployed\":",
             vm.toString(prePos.deployed),
             ",",
@@ -445,9 +353,6 @@ contract RunSparkYDSMainFlowScript is BaseScript {
             "\"post\":{",
             "\"idle\":",
             vm.toString(postPos.idle),
-            ",",
-            "\"vaultShares\":",
-            vm.toString(postPos.vaultShares),
             ",",
             "\"deployed\":",
             vm.toString(postPos.deployed),
@@ -472,8 +377,3 @@ contract RunSparkYDSMainFlowScript is BaseScript {
     }
 }
 
-// set -a; source .env; set +a
-// forge script script/spark/RunSparkYDSMainFlow.s.sol:RunSparkYDSMainFlowScript \
-//   --rpc-url "$ETH_RPC_URL" \
-//   --private-key "$DEPLOYER_PRIVATE_KEY" \
-//   --broadcast -vvvv

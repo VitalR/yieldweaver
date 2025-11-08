@@ -3,49 +3,62 @@ pragma solidity 0.8.30;
 
 import { BaseScript } from "script/common/BaseScript.sol";
 import { console2 } from "forge-std/console2.sol";
-import { SparkSavingsDonationStrategyFactory } from "src/spark/SparkSavingsDonationStrategyFactory.sol";
-import { ISparkVault } from "src/spark/ISparkVault.sol";
 
-/// @dev Env vars (recommended):
-///   DEPLOYER_PRIVATE_KEY (uint)
-///   FACTORY (address, optional; if zero or unset, deploy a new factory)
-///   SPARK_VAULT (address)  -> e.g., spUSDC
-///   UNDERLYING  (address)  -> e.g., USDC mainnet addr (mirrored in VNet)
-///   NAME        (string)   -> e.g., "Spark USDC YDS Tokenized"
-///   MANAGEMENT  (address)
-///   KEEPER      (address)
-///   EMERGENCY_ADMIN (address)
-///   DONATION    (address)
-///   ENABLE_BURNING (bool)  -> "true"/"false"
-///   REFERRAL    (uint16)   -> 0 to disable
+import { SparkSavingsStrategyFactory } from "src/spark/savings/SparkSavingsStrategyFactory.sol";
+import { SparkLendStrategyFactory } from "src/spark/lend/SparkLendStrategyFactory.sol";
+import { ISparkVault } from "src/spark/savings/interfaces/ISparkVault.sol";
+
 contract DeploySparkYDSScript is BaseScript {
-    uint256 deployerKey;
-    address deployer;
-    address initialOwner;
-    address sparkVault;
-    address asset;
-    string name;
-    address management;
-    address keeper;
-    address emergencyAdmin;
-    address donationAddress;
-    bool enableBurning;
-    uint16 referral;
-    address factoryMaybe;
+    enum Kind {
+        SAVINGS,
+        LEND
+    }
+
+    uint256 internal deployerKey;
+    address internal deployer;
+
+    // Common configuration
+    string internal name;
+    address internal management;
+    address internal keeper;
+    address internal emergencyAdmin;
+    address internal donationAddress;
+    bool internal enableBurning;
+    uint16 internal referral;
+
+    // Savings specific
+    address internal sparkVault;
+
+    // Lend specific
+    address internal pool;
+    address internal aToken;
+
+    address internal asset;
+    address internal factoryMaybe;
+    Kind internal strategyKind;
 
     function setUp() public {
-        // --- Load env ---
         deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         deployer = vm.addr(deployerKey);
-        initialOwner = deployer;
 
-        // Ethereum SparkVault.sol: Spark USDC spUSDC
-        // https://etherscan.io/address/0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d#code
-        sparkVault = vm.envAddress("SPARK_VAULT");
-        // Ethereum USDC USDC
-        // https://etherscan.io/address/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48#code
-        asset = vm.envAddress("UNDERLYING");
-        name = vm.envString("NAME");
+        strategyKind = _readStrategyKind();
+
+        if (strategyKind == Kind.SAVINGS) {
+            sparkVault = vm.envAddress("SPARK_VAULT");
+            asset = vm.envAddress("UNDERLYING");
+            name = _envStringOr("NAME_SAVINGS", _envStringOr("NAME", ""));
+        } else {
+            pool = vm.envAddress("SPARK_POOL");
+            aToken = _addrOrZero("SPARK_ATOKEN");
+            if (aToken == address(0)) {
+                aToken = vm.envAddress("ATOKEN");
+            }
+            asset = _addrOrZero("UNDERLYING_LEND");
+            if (asset == address(0)) {
+                asset = vm.envAddress("UNDERLYING");
+            }
+            name = _envStringOr("NAME_LEND", _envStringOr("NAME", ""));
+        }
 
         management = vm.envAddress("MANAGEMENT");
         keeper = vm.envAddress("KEEPER");
@@ -55,180 +68,203 @@ contract DeploySparkYDSScript is BaseScript {
         enableBurning = _envBool("ENABLE_BURNING");
         referral = uint16(_envUintOr("REFERRAL", 0));
 
-        // optional factory
-        factoryMaybe = _addrOrZero("FACTORY");
+        if (strategyKind == Kind.SAVINGS) {
+            factoryMaybe = _addrOrZero("FACTORY_SAVINGS");
+            if (factoryMaybe == address(0)) {
+                factoryMaybe = _addrOrZero("FACTORY");
+            }
+        } else {
+            factoryMaybe = _addrOrZero("FACTORY_LEND");
+            if (factoryMaybe == address(0)) {
+                factoryMaybe = _addrOrZero("FACTORY");
+            }
+        }
     }
 
     function run() public {
-        // --- Sanity checks (script-level policy; strategy will also enforce invariants in constructor) ---
-        require(sparkVault != address(0) && asset != address(0), "sparkVault/asset is zero");
+        bool isSavings = strategyKind == Kind.SAVINGS;
+
+        // Sanity checks
         require(bytes(name).length != 0, "NAME empty");
         require(
             management != address(0) && keeper != address(0) && emergencyAdmin != address(0)
                 && donationAddress != address(0),
             "role addr zero"
         );
+        require(asset != address(0), "asset zero");
 
-        // Verify the ERC-4626 invariant on-chain before spending gas deploying:
-        address vaultAsset = ISparkVault(sparkVault).asset();
-        require(vaultAsset == asset, "vault.asset() mismatch");
+        if (isSavings) {
+            require(sparkVault != address(0), "sparkVault zero");
+            address vaultAsset = ISparkVault(sparkVault).asset();
+            require(vaultAsset == asset, "vault.asset mismatch");
+        } else {
+            require(pool != address(0) && aToken != address(0), "pool/aToken zero");
+        }
 
-        // Align the local simulation nonce with the on-chain nonce so CREATE addresses match reality.
         uint256 deployerNonceBefore = _syncDeployerNonce(deployer);
         bool deploysFactory = factoryMaybe == address(0);
 
         vm.startBroadcast(deployerKey);
+        address factoryAddr;
 
-        // --- Use existing factory or deploy a new one owned by the deployer EOA ---
-        SparkSavingsDonationStrategyFactory factory = deploysFactory
-            ? new SparkSavingsDonationStrategyFactory(vm.addr(deployerKey))
-            : SparkSavingsDonationStrategyFactory(factoryMaybe);
-        address factoryAddr = address(factory);
+        address strategy;
+        address tokenized;
+        address strategyPred;
+        address tokenizedPred;
 
-        // --- Predict addresses (so we can print & store them before deploying) ---
-        (address tokenizedPred, address strategyPred) = factory.predictAddresses(
-            sparkVault, asset, name, management, keeper, emergencyAdmin, donationAddress, enableBurning, referral
-        );
-
-        // --- Deploy pair (CREATE2 for TokenizedStrategy + CREATE2 for Strategy) ---
-        (address strategy, address tokenized) = factory.deployPair(
-            sparkVault, asset, name, management, keeper, emergencyAdmin, donationAddress, enableBurning, referral
-        );
-
+        if (isSavings) {
+            SparkSavingsStrategyFactory factory =
+                deploysFactory ? new SparkSavingsStrategyFactory(deployer) : SparkSavingsStrategyFactory(factoryMaybe);
+            factoryAddr = address(factory);
+            (tokenizedPred, strategyPred) = factory.predictSavingsAddresses(
+                sparkVault, asset, name, management, keeper, emergencyAdmin, donationAddress, enableBurning, referral
+            );
+            (strategy, tokenized) = factory.deploySavingsPair(
+                sparkVault, asset, name, management, keeper, emergencyAdmin, donationAddress, enableBurning, referral
+            );
+        } else {
+            SparkLendStrategyFactory factory =
+                deploysFactory ? new SparkLendStrategyFactory(deployer) : SparkLendStrategyFactory(factoryMaybe);
+            factoryAddr = address(factory);
+            (tokenizedPred, strategyPred) = factory.predictLendAddresses(
+                pool, aToken, asset, name, management, keeper, emergencyAdmin, donationAddress, enableBurning, referral
+            );
+            (strategy, tokenized) = factory.deployLendPair(
+                pool, aToken, asset, name, management, keeper, emergencyAdmin, donationAddress, enableBurning, referral
+            );
+        }
         vm.stopBroadcast();
 
-        // --- Console report ---
-        console2.log("=== Spark YDS Deployment ===");
+        string memory kindLabel = isSavings ? "Savings" : "Lend";
+        console2.log(string.concat("=== Spark ", kindLabel, " YDS Deployment ==="));
         console2.log("Chain ID         :", block.chainid);
         console2.log("Deployer         :", deployer);
-        console2.log("Deployer nonce   :", deployerNonceBefore);
         console2.log("Factory          :", factoryAddr);
-        console2.log("Spark Vault (v2) :", sparkVault);
-        console2.log("Underlying asset :", asset);
         console2.log("Name             :", name);
+        console2.log("Underlying asset :", asset);
+        if (isSavings) {
+            console2.log("Spark Vault      :", sparkVault);
+        } else {
+            console2.log("Spark Pool       :", pool);
+            console2.log("aToken           :", aToken);
+        }
         console2.log("Referral         :", referral);
         console2.log("Enable burning   :", enableBurning);
-
         console2.log("Tokenized (pred) :", tokenizedPred);
         console2.log("Tokenized (real) :", tokenized);
         console2.log("Strategy  (pred) :", strategyPred);
         console2.log("Strategy  (real) :", strategy);
 
-        // --- Persist deployment info (single folder, rolling latest + versioned by block) ---
-        // ./reports/spark-yds/deployment-<chainId>-<blockNumber>.json
+        _writeDeploymentReport(
+            isSavings,
+            factoryAddr,
+            strategy,
+            tokenized,
+            strategyPred,
+            tokenizedPred,
+            deployerNonceBefore,
+            deploysFactory
+        );
+    }
+
+    function _writeDeploymentReport(
+        bool isSavings,
+        address factoryAddr,
+        address strategy,
+        address tokenized,
+        address strategyPred,
+        address tokenizedPred,
+        uint256 deployerNonceBefore,
+        bool deploysFactory
+    ) internal {
         string memory dir = string.concat(vm.projectRoot(), "/reports/spark-yds");
         vm.createDir(dir, true);
-
         string memory file =
             string.concat(dir, "/deployment-", vm.toString(block.chainid), "-", vm.toString(block.number), ".json");
 
-        uint256 pairTxNonce = deployerNonceBefore + (deploysFactory ? 1 : 0);
+        uint256 pairNonce = deployerNonceBefore + (deploysFactory ? 1 : 0);
+        string memory kindValue = isSavings ? "savings" : "lend";
 
-        string memory payload = string.concat(
-            "{",
-            "\"core\":{",
+        bytes memory core = abi.encodePacked(
             "\"chainId\":",
             vm.toString(block.chainid),
-            ",",
-            "\"factory\":\"",
+            ",\"factory\":\"",
             vm.toString(factoryAddr),
-            "\",",
-            "\"sparkVault\":\"",
-            vm.toString(sparkVault),
-            "\",",
-            "\"asset\":\"",
+            "\",\"kind\":\"",
+            kindValue,
+            "\",\"asset\":\"",
             vm.toString(asset),
-            "\",",
-            "\"name\":\"",
+            "\",\"name\":\"",
             name,
-            "\",",
-            "\"enableBurning\":",
-            (enableBurning ? "true" : "false"),
-            ",",
-            "\"referral\":",
-            vm.toString(uint256(referral)),
-            "},",
-            "\"addresses\":{",
-            "\"tokenized\":\"",
+            "\",\"enableBurning\":",
+            enableBurning ? "true" : "false",
+            ",\"referral\":",
+            vm.toString(uint256(referral))
+        );
+
+        if (isSavings) {
+            core = abi.encodePacked(core, ",\"sparkVault\":\"", vm.toString(sparkVault), "\"");
+        } else {
+            core = abi.encodePacked(
+                core, ",\"pool\":\"", vm.toString(pool), "\",\"aToken\":\"", vm.toString(aToken), "\""
+            );
+        }
+
+        bytes memory payload = abi.encodePacked(
+            "{\"core\":{",
+            core,
+            "},\"addresses\":{\"tokenized\":\"",
             vm.toString(tokenized),
-            "\",",
-            "\"strategy\":\"",
+            "\",\"tokenizedPred\":\"",
+            vm.toString(tokenizedPred),
+            "\",\"strategy\":\"",
             vm.toString(strategy),
-            "\"",
-            "},",
-            "\"roles\":{",
+            "\",\"strategyPred\":\"",
+            vm.toString(strategyPred),
+            "\"},\"roles\":{",
             "\"management\":\"",
             vm.toString(management),
-            "\",",
-            "\"keeper\":\"",
+            "\",\"keeper\":\"",
             vm.toString(keeper),
-            "\",",
-            "\"emergencyAdmin\":\"",
+            "\",\"emergencyAdmin\":\"",
             vm.toString(emergencyAdmin),
-            "\",",
-            "\"donationAddress\":\"",
+            "\",\"donationAddress\":\"",
             vm.toString(donationAddress),
-            "\"",
-            "},",
-            "\"tx\":{",
+            "\"},\"tx\":{",
             "\"deployer\":\"",
             vm.toString(deployer),
-            "\",",
-            "\"nonceStart\":",
+            "\",\"nonceStart\":",
             vm.toString(deployerNonceBefore),
-            ",",
-            "\"factoryNonce\":",
+            ",\"factoryNonce\":",
             deploysFactory ? vm.toString(deployerNonceBefore) : "null",
-            ",",
-            "\"pairNonce\":",
-            vm.toString(pairTxNonce),
-            ",",
-            "\"deployedFactory\":",
+            ",\"pairNonce\":",
+            vm.toString(pairNonce),
+            ",\"deployedFactory\":",
             deploysFactory ? "true" : "false",
-            ",",
-            "\"factoryAddress\":\"",
+            ",\"factoryAddress\":\"",
             vm.toString(factoryAddr),
-            "\"",
-            "}",
-            "}"
+            "\"}}"
         );
-        vm.writeJson(payload, file);
+
+        vm.writeJson(string(payload), file);
+    }
+
+    function _readStrategyKind() internal view returns (Kind kind) {
+        bool set;
+        try vm.envUint("STRAT_KIND") returns (uint256 raw) {
+            require(raw <= uint256(Kind.LEND), "invalid STRAT_KIND value");
+            kind = Kind(raw);
+            set = true;
+        } catch { }
+
+        if (!set) {
+            string memory label = _envStringOr("STRAT_KIND", "SAVINGS");
+            bytes32 h = keccak256(bytes(_lower(label)));
+            if (h == keccak256("lend")) {
+                kind = Kind.LEND;
+            } else {
+                kind = Kind.SAVINGS;
+            }
+        }
     }
 }
-
-// == Logs ==
-//   === Spark YDS Deployment ===
-//   Chain ID         : 8
-//   Factory          : 0x14c35DdF059f82f2Eff39B6cA5807f5090496fBC
-//   Spark Vault (v2) : 0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d
-//   Underlying asset : 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
-//   Name             : Spark USDC YDS Tokenized
-//   Referral         : 0
-//   Enable burning   : true
-//   Tokenized (pred) : 0x6BfF139Ca54Ae7d3890F2F8d69Ec026e5ee7ba78
-//   Tokenized (real) : 0x6BfF139Ca54Ae7d3890F2F8d69Ec026e5ee7ba78
-//   Strategy  (pred) : 0xA506072661441Aee374f35390D8A459aba9a4322
-//   Strategy  (real) : 0xA506072661441Aee374f35390D8A459aba9a4322
-
-// # asset() should be USDC on mainnet
-// set -a; source .env; set +a
-// cast call 0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d "asset()(address)" \
-//   --rpc-url "$ETH_RPC_URL"
-
-// # optional: name/version/totalAssets
-// cast call 0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d "name()(string)" \
-//   --rpc-url "$ETH_RPC_URL"
-// cast call 0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d "totalAssets()(uint256)" \
-//   --rpc-url "$ETH_RPC_URL"
-
-// # underlying token (USDC) quick check
-// cast call 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 "symbol()(string)" \
-//   --rpc-url "$ETH_RPC_URL"
-// cast call 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 "decimals()(uint8)" \
-//   --rpc-url "$ETH_RPC_URL"
-
-// set -a; source .env; set +a
-// forge script script/spark/DeploySparkYDS.s.sol:DeploySparkYDSScript \
-//   --rpc-url "$ETH_RPC_URL" \
-//   --private-key "$DEPLOYER_PRIVATE_KEY" \
-//   --broadcast -vvvv

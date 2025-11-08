@@ -11,7 +11,7 @@ fs_permissions = [
 solc = "0.8.30"
 optimizer = true
 optimizer_runs = 1000
-viaIR = true
+via_ir = true
 
 [fmt]
 tab_width = 4

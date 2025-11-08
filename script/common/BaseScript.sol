@@ -40,6 +40,14 @@ abstract contract BaseScript is Script {
         }
     }
 
+    function _envStringOr(string memory key, string memory def) internal view returns (string memory) {
+        try vm.envString(key) returns (string memory s) {
+            return s;
+        } catch {
+            return def;
+        }
+    }
+
     function _boolToString(bool value) internal pure returns (string memory) {
         return value ? "true" : "false";
     }
