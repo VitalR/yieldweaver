@@ -2,7 +2,8 @@
 node_modules/
 .next/
 # dependencies/ # Keep dependencies/ in the repo for Foundry vendoring
-# lib/ keeps vendored Solidity dependencies and submodules
+lib/ 
+# Keeps vendored Solidity dependencies and submodules
 # Do not ignore the entire lib directory to allow vendoring
 
 # Hardhat
