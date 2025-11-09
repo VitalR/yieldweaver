@@ -57,4 +57,34 @@ library Errors {
 
     /// @dev Thrown when an address is the zero address.
     error ZeroAddress();
+
+    /// @dev Thrown when share/asset arrays have mismatched length.
+    error InvalidTargetsLength();
+
+    /// @dev Thrown when no strategies are provided for configuration.
+    error NoStrategiesDefined();
+
+    /// @dev Thrown when strategies are already configured.
+    error StrategiesAlreadyConfigured();
+
+    /// @dev Thrown when target allocations do not sum to 100%.
+    error TargetSumMismatch();
+
+    /// @dev Thrown when receiver address is zero.
+    error InvalidReceiver();
+
+    /// @dev Thrown when owner address is zero.
+    error InvalidOwner();
+
+    /// @dev Thrown when withdrawal queue configuration is invalid.
+    error InvalidQueue();
+
+    /// @dev Thrown when strategies cannot provide sufficient liquidity.
+    error InsufficientLiquidity();
+
+    /// @dev Thrown when supplied amount is zero.
+    error ZeroAmount();
+
+    /// @dev Thrown when metadata (name/symbol) is empty.
+    error EmptyMetadata();
 }
