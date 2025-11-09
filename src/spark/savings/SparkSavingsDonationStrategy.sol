@@ -114,8 +114,8 @@ contract SparkSavingsDonationStrategy is BaseStrategy {
     function _deployFunds(uint256 _amount) internal override {
         // Only deploy if our idle buffer is meaningful (above deployThreshold).
         if (idle() < deployThreshold) return;
-        if (referral != 0) SPARK_VAULT.deposit(_amount, address(this), referral); // Spark V2 overload.
-        else SPARK_VAULT.deposit(_amount, address(this)); // ERC-4626 standard deposit.
+        // Spark Savings Vaults require the three-argument deposit overload; pass 0 when referral disabled.
+        SPARK_VAULT.deposit(_amount, address(this), referral);
     }
 
     /// @dev During withdraw/redeem: pull asset back out of the Spark Savings Vault.

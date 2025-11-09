@@ -152,6 +152,7 @@ contract RunSparkLendYDSMainFlowScript is BaseScript {
         }
 
         _logSummary(pre, post, deposited, withdrawn, withdrawLimitBefore, withdrawLimitAfter, profit, loss);
+        _writeReport(pre, post, deposited, withdrawn, withdrawLimitBefore, withdrawLimitAfter, profit, loss);
         if (doInspect && requiresBroadcast) _logPosition("Post", post);
     }
 
@@ -249,5 +250,56 @@ contract RunSparkLendYDSMainFlowScript is BaseScript {
         if (doReport) console2.log("Profit           :", profit);
         console2.log("Loss             :", loss);
     }
-}
 
+    function _writeReport(
+        Position memory prePos,
+        Position memory postPos,
+        uint256 deposited,
+        uint256 withdrawn,
+        uint256 withdrawLimitBefore,
+        uint256 withdrawLimitAfter,
+        uint256 profit,
+        uint256 loss
+    ) internal {
+        string memory dir = "reports/spark/lend";
+        vm.createDir(dir, true);
+        string memory path =
+            string.concat(dir, "/run-", vm.toString(block.chainid), "-", vm.toString(block.number), ".json");
+
+        string memory label = "run";
+        string memory json = vm.serializeUint(label, "chainId", block.chainid);
+        json = vm.serializeUint(label, "blockNumber", block.number);
+        json = vm.serializeAddress(label, "strategy", strategy);
+        json = vm.serializeAddress(label, "tokenized", tokenized);
+        json = vm.serializeAddress(label, "aToken", aToken);
+        json = vm.serializeAddress(label, "asset", asset);
+        json = vm.serializeAddress(label, "user", user);
+        json = vm.serializeUint(label, "amount", amount);
+        json = vm.serializeBool(label, "doApprove", doApprove);
+        json = vm.serializeBool(label, "doDeposit", doDeposit);
+        json = vm.serializeBool(label, "doTend", doTend);
+        json = vm.serializeBool(label, "doReport", doReport);
+        json = vm.serializeBool(label, "doWithdraw", doWithdraw);
+        json = vm.serializeBool(label, "doWithdrawAll", doWithdrawAll);
+        json = vm.serializeUint(label, "withdrawBps", withdrawBps);
+        json = vm.serializeUint(label, "withdrawAssetsOverride", withdrawAssetsOverride);
+        json = vm.serializeUint(label, "deposited", deposited);
+        json = vm.serializeUint(label, "withdrawn", withdrawn);
+        json = vm.serializeUint(label, "profit", profit);
+        json = vm.serializeUint(label, "loss", loss);
+        json = vm.serializeUint(label, "withdrawLimitBefore", withdrawLimitBefore);
+        json = vm.serializeUint(label, "withdrawLimitAfter", withdrawLimitAfter);
+        json = vm.serializeUint(label, "preTotalAssets", prePos.total);
+        json = vm.serializeUint(label, "postTotalAssets", postPos.total);
+        json = vm.serializeUint(label, "preIdle", prePos.idle);
+        json = vm.serializeUint(label, "postIdle", postPos.idle);
+        json = vm.serializeUint(label, "preDeployed", prePos.deployed);
+        json = vm.serializeUint(label, "postDeployed", postPos.deployed);
+        json = vm.serializeUint(label, "preUserShares", prePos.userShares);
+        json = vm.serializeUint(label, "postUserShares", postPos.userShares);
+        json = vm.serializeUint(label, "preUserAssets", prePos.userAssets);
+        json = vm.serializeUint(label, "postUserAssets", postPos.userAssets);
+        vm.writeJson(json, path);
+        console2.log("Report written   :", path);
+    }
+}

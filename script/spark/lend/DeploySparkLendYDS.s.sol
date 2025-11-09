@@ -119,6 +119,7 @@ contract DeploySparkLendYDSScript is BaseScript {
         vm.stopBroadcast();
 
         _logResult(res);
+        _writeReport(res);
     }
 
     function _logResult(DeploymentResult memory res) internal view {
@@ -137,5 +138,28 @@ contract DeploySparkLendYDSScript is BaseScript {
         console2.log("Strategy  (pred) :", res.strategyPred);
         console2.log("Strategy  (real) :", res.strategy);
     }
-}
 
+    function _writeReport(DeploymentResult memory res) internal {
+        string memory dir = "reports/spark/lend";
+        vm.createDir(dir, true);
+        string memory path =
+            string.concat(dir, "/deployment-", vm.toString(block.chainid), "-", vm.toString(block.number), ".json");
+
+        string memory label = "deployment";
+        string memory json = vm.serializeUint(label, "chainId", block.chainid);
+        json = vm.serializeUint(label, "blockNumber", block.number);
+        json = vm.serializeAddress(label, "deployer", cfg.deployer);
+        json = vm.serializeAddress(label, "factory", res.factory);
+        json = vm.serializeString(label, "name", cfg.name);
+        json = vm.serializeAddress(label, "pool", cfg.pool);
+        json = vm.serializeAddress(label, "aToken", cfg.aToken);
+        json = vm.serializeAddress(label, "asset", cfg.asset);
+        json = vm.serializeAddress(label, "strategy", res.strategy);
+        json = vm.serializeAddress(label, "tokenized", res.tokenized);
+        json = vm.serializeBool(label, "enableBurning", cfg.enableBurning);
+        json = vm.serializeUint(label, "referral", cfg.referral);
+        json = vm.serializeUint(label, "nonceStart", res.nonceStart);
+        vm.writeJson(json, path);
+        console2.log("Report written   :", path);
+    }
+}
