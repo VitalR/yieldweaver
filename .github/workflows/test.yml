@@ -1,40 +1,38 @@
 name: Tests
 
 on:
-  workflow_dispatch
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 env:
   FOUNDRY_PROFILE: ci
 
 jobs:
   check:
-    strategy:
-      fail-fast: true
-
     name: Foundry project
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          
-      - name: Install Foundry (Stable Version)
+
+      - name: Install Foundry (stable)
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
 
-      - name: Clear Foundry Cache
+      - name: Install dependencies
+        run: forge install --no-commit
+
+      - name: Clear Foundry cache
         run: forge cache clean
 
-      - name: Verify Foundry Version
+      - name: Verify Foundry version
         run: forge --version
 
-      - name: Run Forge build
-        run: |
-          forge build --sizes
-        id: build
+      - name: Run forge build
+        run: forge build --sizes
 
-      - name: Run Forge tests
-        run: |
-          forge test -vvv
-        id: test
+      - name: Run forge tests
+        run: forge test -vvv
