@@ -40,17 +40,17 @@ The multi-strategy vault keeps a configurable idle buffer (default 20%) and targ
 
 ## Deployments (Tenderly VNet, chainId 8)
 
-| Component                                   | Address                                      | Notes |
-|---------------------------------------------|----------------------------------------------|-------|
-| USDC (underlying)                           | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | Mirrored mainnet USDC |
-| Spark Savings Vault V2 (spUSDC)             | `0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d` | ERC-4626 backing savings strategy |
-| SparkLend Pool                              | `0xC13e21B648A5Ee794902342038FF3aDAB66BE987` | Aave v3-style pool |
-| SparkLend aToken (aUSDC)                    | `0x377C3bd93f2a2984E1E7bE6A5C22c525eD4A4815` | Yield-bearing token |
-| SparkSavingsDonationStrategy                | `0x01CE4023E950Da48a0167A5542D5682Ce6319a79` | Strategy proxy (delegates to tokenized) |
-| YieldDonatingTokenizedStrategy (Savings)    | `0x9aCd869ae6cdB07994C65BAf46a4c9b58503764E` | Donation-aware tokenized vault |
-| SparkLendDonationStrategy                   | `0x28Ecb912d3176d8CEEa0a8f8eD1C023e402c2c76` | SparkLend strategy entry point |
-| YieldDonatingTokenizedStrategy (Lend)       | `0x932e29FB1D61509746777FD2F901B20B5f1EEAf7` | Donation-aware tokenized vault |
-| SparkMultiStrategyVault (msUSDC)            | `0x6ff9DFae2ca36CCd06f30Fb272bCcb2A88848568` | Fund-of-funds vault |
+| Component                                | Address                                      | Notes                                   |
+| ---------------------------------------- | -------------------------------------------- | --------------------------------------- |
+| USDC (underlying)                        | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | Mirrored mainnet USDC                   |
+| Spark Savings Vault V2 (spUSDC)          | `0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d` | ERC-4626 backing savings strategy       |
+| SparkLend Pool                           | `0xC13e21B648A5Ee794902342038FF3aDAB66BE987` | Aave v3-style pool                      |
+| SparkLend aToken (aUSDC)                 | `0x377C3bd93f2a2984E1E7bE6A5C22c525eD4A4815` | Yield-bearing token                     |
+| SparkSavingsDonationStrategy             | `0x01CE4023E950Da48a0167A5542D5682Ce6319a79` | Strategy proxy (delegates to tokenized) |
+| YieldDonatingTokenizedStrategy (Savings) | `0x9aCd869ae6cdB07994C65BAf46a4c9b58503764E` | Donation-aware tokenized vault          |
+| SparkLendDonationStrategy                | `0x28Ecb912d3176d8CEEa0a8f8eD1C023e402c2c76` | SparkLend strategy entry point          |
+| YieldDonatingTokenizedStrategy (Lend)    | `0x932e29FB1D61509746777FD2F901B20B5f1EEAf7` | Donation-aware tokenized vault          |
+| SparkMultiStrategyVault (msUSDC)         | `0x6ff9DFae2ca36CCd06f30Fb272bCcb2A88848568` | Fund-of-funds vault                     |
 
 _Deployment JSONs live under `reports/spark/**/deployment-*.json` for reproducibility and auditing._
 
@@ -78,6 +78,8 @@ $EDITOR .env
 # SPARK_POOL, SPARK_ATOKEN, MANAGEMENT, KEEPER, EMERGENCY_ADMIN, DONATION, etc.
 ```
 
+Detailed parameter explanations live in [`docs/spark/INTEGRATION.md`](docs/spark/INTEGRATION.md).
+
 ### Build, Test & Coverage
 
 ```bash
@@ -87,6 +89,7 @@ make coverage-lcov
 ```
 
 Tests mirror the on-chain deployment layout and cover:
+
 - Strategy configuration and guardrails (zero address, mismatched assets, access control)
 - Donation semantics (minting on profit, burning on loss)
 - Multi-strategy vault flows (deposit/mint/withdraw/redeem, queue order, idle buffer)
@@ -127,14 +130,14 @@ _Important_: set `WITHDRAW_BPS=0` unless you explicitly want the flow script to 
 
 ## Project Organisation
 
-| Path | Description |
-|------|-------------|
-| `src/spark/savings/` | Spark Savings donation strategy and its CREATE2 factory |
-| `src/spark/lend/` | SparkLend donation strategy and factory |
-| `src/spark/multistrategy/` | `SparkMultiStrategyVault` implementation (Octant-lite) |
-| `script/spark/**` | Foundry scripts for deploy & main flows (savings, lend, multi) |
-| `test/spark/**` | Comprehensive test suites mirroring `src/` layout |
-| `reports/spark/**` | Deterministic deployment/run JSON artefacts |
+| Path                       | Description                                                    |
+| -------------------------- | -------------------------------------------------------------- |
+| `src/spark/savings/`       | Spark Savings donation strategy and its CREATE2 factory        |
+| `src/spark/lend/`          | SparkLend donation strategy and factory                        |
+| `src/spark/multistrategy/` | `SparkMultiStrategyVault` implementation (Octant-lite)         |
+| `script/spark/**`          | Foundry scripts for deploy & main flows (savings, lend, multi) |
+| `test/spark/**`            | Comprehensive test suites mirroring `src/` layout              |
+| `reports/spark/**`         | Deterministic deployment/run JSON artefacts                    |
 
 ## Security & Production Considerations
 
