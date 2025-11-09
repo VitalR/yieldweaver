@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -23,7 +23,11 @@ jobs:
           version: stable
 
       - name: Install dependencies
-        run: forge install --no-commit
+        run: >
+          forge install --no-git
+          foundry-rs/forge-std@v1.11.0
+          golemfoundation/octant-v2-core@58d698ee0cb0a7c993c92adc6239f22ed5140ac2
+          OpenZeppelin/openzeppelin-contracts@v5.5.0
 
       - name: Clear Foundry cache
         run: forge cache clean
