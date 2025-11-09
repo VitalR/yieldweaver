@@ -1,0 +1,17 @@
+{
+  "asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "blockNumber": 23722268,
+  "chainId": 8,
+  "deployer": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623",
+  "idleBps": 2000,
+  "name": "Spark USDC Multi Strategy Vault",
+  "owner": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623",
+  "queue_0": 0,
+  "queue_1": 1,
+  "strategy_0": "0x70E5B5496D05EeBCDA5e4C12A2ec553a1Dc433C5",
+  "strategy_1": "0x932e29FB1D61509746777FD2F901B20B5f1EEAf7",
+  "symbol": "msUSDC",
+  "targetBps_0": 4000,
+  "targetBps_1": 4000,
+  "vault": "0xD52154bd4b275D7D6059D68A730003E5E85F42b6"
+}

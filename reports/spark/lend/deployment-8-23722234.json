@@ -1,0 +1,15 @@
+{
+  "aToken": "0x377C3bd93f2a2984E1E7bE6A5C22c525eD4A4815",
+  "asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "blockNumber": 23722234,
+  "chainId": 8,
+  "deployer": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623",
+  "enableBurning": true,
+  "factory": "0xA9344567aF3704D16EAa4c7862FC53E4AeeF9bD6",
+  "name": "SparkLend USDC YDS",
+  "nonceStart": 40,
+  "pool": "0xC13e21B648A5Ee794902342038FF3aDAB66BE987",
+  "referral": 0,
+  "strategy": "0x28Ecb912d3176d8CEEa0a8f8eD1C023e402c2c76",
+  "tokenized": "0x932e29FB1D61509746777FD2F901B20B5f1EEAf7"
+}

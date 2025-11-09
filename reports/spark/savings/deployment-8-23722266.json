@@ -1,0 +1,14 @@
+{
+  "asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "blockNumber": 23722266,
+  "chainId": 8,
+  "deployer": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623",
+  "enableBurning": true,
+  "factory": "0xf30bC1632E192E5Ca3D44739766D0af83a50d492",
+  "name": "SparkSavings USDC YDS Tokenized v2",
+  "nonceStart": 43,
+  "referral": 0,
+  "sparkVault": "0x28B3a8fb53B741A8Fd78c0fb9A6B2393d896a43d",
+  "strategy": "0x01CE4023E950Da48a0167A5542D5682Ce6319a79",
+  "tokenized": "0x9aCd869ae6cdB07994C65BAf46a4c9b58503764E"
+}

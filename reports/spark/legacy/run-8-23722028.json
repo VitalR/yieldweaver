@@ -1,0 +1,42 @@
+{
+  "core": {
+    "chainId": 8,
+    "strategy": "0xcBa93872B7D2E9AC6c39719219a3B7Dfeb839980",
+    "tokenized": "0xb3665679bDA7bE579ff37F0f402B5D1d50b468f3",
+    "aToken": "0xC02aB1A5eaA8d1B114EF786D9bde108cD4364359",
+    "asset": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+    "user": "0x8B2dc96fBEd0452f1386C8c2bfE713f11F88D623"
+  },
+  "flow": {
+    "doDeposit": true,
+    "doTend": false,
+    "doReport": false,
+    "doWithdraw": false,
+    "doInspect": false,
+    "sleepSeconds": 0,
+    "deposited": 100000000,
+    "withdrawn": 0,
+    "withdrawAssetsOverride": 0,
+    "withdrawBps": 2500,
+    "withdrawLimitBefore": 100000000,
+    "withdrawLimitAfter": 0
+  },
+  "positions": {
+    "pre": {
+      "idle": 0,
+      "deployed": 0,
+      "total": 0,
+      "userShares": 0,
+      "userAssets": 0,
+      "withdrawLimit": 0
+    },
+    "post": {
+      "idle": 100000000,
+      "deployed": 0,
+      "total": 100000000,
+      "userShares": 100000000,
+      "userAssets": 100000000,
+      "withdrawLimit": 100000000
+    }
+  }
+}
