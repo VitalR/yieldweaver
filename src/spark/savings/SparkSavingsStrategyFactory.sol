@@ -76,22 +76,42 @@ contract SparkSavingsStrategyFactory is Ownable {
                     SAVINGS (ERC-4626) DEPLOY & PREDICT
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Parameter bundle used during Spark Savings pair deployments.
+    /// @param sparkVault Spark Savings Vault V2 (ERC-4626) address (e.g., spUSDS).
+    /// @param asset Underlying token accepted by the vault (must equal ISparkVault(vault).asset()).
+    /// @param name Human-readable strategy name (forwarded to BaseStrategy).
+    /// @param management Management role address.
+    /// @param keeper Keeper role address.
+    /// @param emergencyAdmin Emergency admin role address.
+    /// @param donationAddress Dragon router / donation sink address.
+    /// @param enableBurning Whether losses burn donation shares before affecting PPS.
+    /// @param referral Spark referral code (0 to disable).
+    struct SavingsDeployParams {
+        address sparkVault;
+        address asset;
+        string name;
+        address management;
+        address keeper;
+        address emergencyAdmin;
+        address donationAddress;
+        bool enableBurning;
+        uint16 referral;
+    }
+
     /**
      * @notice Deploy a complete Octant v2 YDS pair using CREATE2 (deterministic addresses).
      * @dev Constructors of both contracts WILL run. Addresses depend on salt+init code hash.
-     *
-     * @param _sparkVault      Spark Savings Vault V2 (ERC-4626) address (e.g., spUSDC).
-     * @param _asset           Underlying token accepted by the vault (must equal ISparkVault(sparkVault).asset()).
-     * @param _name            Strategy name (forwarded to BaseStrategy).
-     * @param _management      Management role address.
-     * @param _keeper          Keeper role address.
-     * @param _emergencyAdmin  Emergency admin role address.
+     * @param _sparkVault Spark Savings Vault V2 (ERC-4626) address (e.g., spUSDC).
+     * @param _asset Underlying token accepted by the vault (must equal ISparkVault(sparkVault).asset()).
+     * @param _name Strategy name (forwarded to BaseStrategy).
+     * @param _management Management role address.
+     * @param _keeper Keeper role address.
+     * @param _emergencyAdmin Emergency admin role address.
      * @param _donationAddress Donation sink (dragon router) for TokenizedStrategy.
-     * @param _enableBurning   If true, losses first burn donation shares (dragon) before affecting PPS.
-     * @param _referral        Spark referral code (0 to disable).
-     *
-     * @return strategy  The deployed SparkSavingsDonationStrategy.
-     * @return tokenized The deployed YieldDonatingTokenizedStrategy.
+     * @param _enableBurning If true, losses first burn donation shares (dragon) before affecting PPS.
+     * @param _referral Spark referral code (0 to disable).
+     * @return strategy The deployed SparkSavingsDonationStrategy address.
+     * @return tokenized The deployed YieldDonatingTokenizedStrategy address.
      */
     function deploySavingsPair(
         address _sparkVault,
@@ -104,35 +124,65 @@ contract SparkSavingsStrategyFactory is Ownable {
         bool _enableBurning,
         uint16 _referral
     ) external onlyOwner returns (address strategy, address tokenized) {
-        require(_sparkVault != address(0) && _asset != address(0), Errors.ZeroAddress());
-        require(bytes(_name).length != 0, Errors.InvalidName());
-        require(_savingsStrategies[_asset][_sparkVault] == address(0), Errors.AlreadyDeployed());
+        SavingsDeployParams memory params = SavingsDeployParams({
+            sparkVault: _sparkVault,
+            asset: _asset,
+            name: _name,
+            management: _management,
+            keeper: _keeper,
+            emergencyAdmin: _emergencyAdmin,
+            donationAddress: _donationAddress,
+            enableBurning: _enableBurning,
+            referral: _referral
+        });
+
+        return _deploySavingsPair(params);
+    }
+
+    /// @dev Performs CREATE2 deployment using the supplied parameter bundle.
+    function _deploySavingsPair(SavingsDeployParams memory params)
+        internal
+        returns (address strategy, address tokenized)
+    {
+        require(params.sparkVault != address(0) && params.asset != address(0), Errors.ZeroAddress());
+        require(bytes(params.name).length != 0, Errors.InvalidName());
+        require(_savingsStrategies[params.asset][params.sparkVault] == address(0), Errors.AlreadyDeployed());
 
         bytes memory ydsBytecode = type(YieldDonatingTokenizedStrategy).creationCode;
-        bytes32 saltT = _saltTokenizedSavings(_sparkVault, _asset, _name, _referral);
+        bytes32 saltT = _saltTokenizedSavings(params.sparkVault, params.asset, params.name, params.referral);
         tokenized = Create2.deploy(0, saltT, ydsBytecode);
 
-        bytes memory stratBytecode = abi.encodePacked(
-            type(SparkSavingsDonationStrategy).creationCode,
-            abi.encode(
-                _sparkVault,
-                _asset,
-                _name,
-                _management,
-                _keeper,
-                _emergencyAdmin,
-                _donationAddress,
-                _enableBurning,
-                tokenized,
-                _referral
-            )
-        );
-        bytes32 saltS = _saltStrategySavings(_sparkVault, _asset, _name, _referral);
+        bytes memory stratBytecode = _encodeSavingsBytecode(params, tokenized);
+        bytes32 saltS = _saltStrategySavings(params.sparkVault, params.asset, params.name, params.referral);
         strategy = Create2.deploy(0, saltS, stratBytecode);
 
-        _savingsStrategies[_asset][_sparkVault] = strategy;
+        _savingsStrategies[params.asset][params.sparkVault] = strategy;
 
-        emit RegisteredSparkSavingsStrategy(strategy, tokenized, _asset, _sparkVault, _name, _referral, _enableBurning);
+        emit RegisteredSparkSavingsStrategy(
+            strategy, tokenized, params.asset, params.sparkVault, params.name, params.referral, params.enableBurning
+        );
+    }
+
+    /// @dev ABI-encodes the Spark Savings strategy constructor using the parameter bundle.
+    function _encodeSavingsBytecode(SavingsDeployParams memory params, address tokenized)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        bytes memory constructorArgs = abi.encode(
+            params.sparkVault,
+            params.asset,
+            params.name,
+            params.management,
+            params.keeper,
+            params.emergencyAdmin,
+            params.donationAddress,
+            params.enableBurning,
+            tokenized,
+            params.referral
+        );
+
+        return abi.encodePacked(type(SparkSavingsDonationStrategy).creationCode, constructorArgs);
     }
 
     /**
@@ -164,25 +214,23 @@ contract SparkSavingsStrategyFactory is Ownable {
         bool _enableBurning,
         uint16 _referral
     ) external view returns (address tokenizedPred, address strategyPred) {
-        bytes32 saltT = _saltTokenizedSavings(_sparkVault, _asset, _name, _referral);
+        SavingsDeployParams memory params = SavingsDeployParams({
+            sparkVault: _sparkVault,
+            asset: _asset,
+            name: _name,
+            management: _management,
+            keeper: _keeper,
+            emergencyAdmin: _emergencyAdmin,
+            donationAddress: _donationAddress,
+            enableBurning: _enableBurning,
+            referral: _referral
+        });
+
+        bytes32 saltT = _saltTokenizedSavings(params.sparkVault, params.asset, params.name, params.referral);
         tokenizedPred = Create2.computeAddress(saltT, YDS_CREATION_HASH, address(this));
 
-        bytes memory stratBytecode = abi.encodePacked(
-            type(SparkSavingsDonationStrategy).creationCode,
-            abi.encode(
-                _sparkVault,
-                _asset,
-                _name,
-                _management,
-                _keeper,
-                _emergencyAdmin,
-                _donationAddress,
-                _enableBurning,
-                tokenizedPred,
-                _referral
-            )
-        );
-        bytes32 saltS = _saltStrategySavings(_sparkVault, _asset, _name, _referral);
+        bytes memory stratBytecode = _encodeSavingsBytecode(params, tokenizedPred);
+        bytes32 saltS = _saltStrategySavings(params.sparkVault, params.asset, params.name, params.referral);
         bytes32 stratHash = keccak256(stratBytecode);
         strategyPred = Create2.computeAddress(saltS, stratHash, address(this));
     }
@@ -207,7 +255,7 @@ contract SparkSavingsStrategyFactory is Ownable {
     /// @param _name Strategy name.
     /// @param _referral Spark referral code (0 to disable).
     /// @return bytes32 The deterministic salt.
-    function _saltTokenizedSavings(address _vault, address _asset, string calldata _name, uint16 _referral)
+    function _saltTokenizedSavings(address _vault, address _asset, string memory _name, uint16 _referral)
         internal
         pure
         returns (bytes32)
@@ -222,7 +270,7 @@ contract SparkSavingsStrategyFactory is Ownable {
     /// @param _name Strategy name.
     /// @param _referral Spark referral code (0 to disable).
     /// @return bytes32 The deterministic salt.
-    function _saltStrategySavings(address _vault, address _asset, string calldata _name, uint16 _referral)
+    function _saltStrategySavings(address _vault, address _asset, string memory _name, uint16 _referral)
         internal
         pure
         returns (bytes32)

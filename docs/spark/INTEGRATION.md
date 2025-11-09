@@ -22,14 +22,15 @@ Both strategies conform to Octant v2 YDS semantics: user principal remains flat,
 
 ## Scripts
 
-- Unified deploy (`STRAT_KIND=SAVINGS|LEND`): `script/spark/DeploySparkYDS.s.sol`
-- Savings YDS flow: `script/spark/RunSparkYDSMainFlow.s.sol`
-- SparkLend YDS flow: `script/spark/RunSparkLendYDSMainFlow.s.sol`
+- Deploy Spark Savings YDS: `script/spark/savings/DeploySparkSavingsYDS.s.sol`
+- Deploy SparkLend YDS: `script/spark/lend/DeploySparkLendYDS.s.sol`
+- Savings YDS flow: `script/spark/savings/RunSparkSavingsYDSMainFlow.s.sol`
+- SparkLend YDS flow: `script/spark/lend/RunSparkLendYDSMainFlow.s.sol`
 
 ## Makefile shortcuts
 
-- `make deploy-spark` – deploy Spark Savings YDS pair (defaults to `STRAT_KIND=SAVINGS`)
-- `make deploy-spark-lend` – deploy SparkLend YDS pair (`STRAT_KIND=LEND`)
+- `make deploy-spark` – deploy Spark Savings YDS pair
+- `make deploy-spark-lend` – deploy SparkLend YDS pair
 - `make spark-flow-deposit` / `make spark-flow-status` – run Savings flow helpers
 - `make spark-lend-flow-deposit` / `make spark-lend-flow-status` – run SparkLend flow helpers
 
@@ -38,7 +39,7 @@ Both strategies conform to Octant v2 YDS semantics: user principal remains flat,
 Savings:
 
 - `SPARK_VAULT` – Spark Savings Vault (e.g. sUSDS)
-- `UNDERLYING` – asset (e.g. USDS)
+- `UNDERLYING` – (optional) asset override; defaults to `vault.asset()`
 - Optional overrides: `NAME_SAVINGS`, `FACTORY_SAVINGS`
 - Roles: `MANAGEMENT`, `KEEPER`, `EMERGENCY_ADMIN`, `DONATION`
 
