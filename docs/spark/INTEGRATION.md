@@ -19,6 +19,7 @@ Both strategies conform to Octant v2 YDS semantics: user principal remains flat,
 - `src/spark/lend/SparkLendDonationStrategy.sol` – Aave v3-style supply/withdraw adapter into SparkLend
 - `src/spark/savings/SparkSavingsStrategyFactory.sol` – CREATE2 factory for Spark Savings YDS pairs
 - `src/spark/lend/SparkLendStrategyFactory.sol` – CREATE2 factory for SparkLend YDS pairs
+- `src/spark/multistrategy/SparkMultiStrategyVault.sol` – fixed-allocation ERC-4626 vault allocating across Spark Savings & SparkLend donation strategies
 
 ## Scripts
 
@@ -26,6 +27,8 @@ Both strategies conform to Octant v2 YDS semantics: user principal remains flat,
 - Deploy SparkLend YDS: `script/spark/lend/DeploySparkLendYDS.s.sol`
 - Savings YDS flow: `script/spark/savings/RunSparkSavingsYDSMainFlow.s.sol`
 - SparkLend YDS flow: `script/spark/lend/RunSparkLendYDSMainFlow.s.sol`
+- Deploy Spark multi-strategy vault: `script/spark/multistrategy/DeploySparkMultiStrategyVault.s.sol`
+- Multi-strategy flow: `script/spark/multistrategy/RunSparkMultiStrategyVaultFlow.s.sol`
 
 ## Makefile shortcuts
 
@@ -33,6 +36,8 @@ Both strategies conform to Octant v2 YDS semantics: user principal remains flat,
 - `make deploy-spark-lend` – deploy SparkLend YDS pair
 - `make spark-flow-deposit` / `make spark-flow-status` – run Savings flow helpers
 - `make spark-lend-flow-deposit` / `make spark-lend-flow-status` – run SparkLend flow helpers
+- `make deploy-spark-multi` – deploy Spark multi-strategy vault
+- `make spark-multi-flow-deposit` / `make spark-multi-flow-status` – run multi-vault flow helpers
 
 ## Env (examples)
 
@@ -59,10 +64,14 @@ SparkLend:
 
 ## Testing
 
-- Savings tests: `test/spark/SparkSavingsDonationStrategy.t.sol`
-- SparkLend tests: `test/spark/SparkLendDonationStrategy.t.sol`
+- Savings tests: `test/spark/savings/SparkSavingsDonationStrategy.t.sol`
+- SparkLend tests: `test/spark/lend/SparkLendDonationStrategy.t.sol`
+- Multi-strategy tests: `test/spark/multistrategy/SparkMultiStrategyVault.t.sol`
 
 ## Reports
 
-- Deployment reports are emitted to `reports/spark-yds/deployment-<chain>-<block>.json`
-- Flow runs create `reports/spark-yds/run-<chain>-<block>.json`; keep only runs needed for debugging or demos before committing
+- Deployment reports are emitted under `reports/spark/<product>/deployment-<chain>-<block>.json`
+  - Savings: `reports/spark/savings/...`
+  - Lend: `reports/spark/lend/...`
+  - Multi-strategy: `reports/spark/multistrategy/...`
+- Flow runs create `reports/spark/<product>/run-<chain>-<block>.json`; keep only runs needed for debugging or demos before committing
