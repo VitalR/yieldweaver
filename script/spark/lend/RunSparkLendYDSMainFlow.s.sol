@@ -133,12 +133,15 @@ contract RunSparkLendYDSMainFlowScript is BaseScript {
         if (requiresBroadcast) {
             if (deployerKey != 0) vm.startBroadcast(deployerKey);
             else vm.startBroadcast();
+
             if (doDeposit) deposited = _executeDeposit();
             if (doTend) _call(strategy, abi.encodeWithSignature("tend()"), "tend failed");
             if (sleepSecs > 0) vm.sleep(sleepSecs);
             if (doReport) (profit, loss) = _report();
+
             withdrawLimitBefore = _readWithdrawLimit();
             if (doWithdraw) (withdrawn, withdrawLimitAfter) = _executeWithdraw(withdrawLimitBefore);
+
             vm.stopBroadcast();
         }
 
@@ -150,10 +153,6 @@ contract RunSparkLendYDSMainFlowScript is BaseScript {
 
         _logSummary(pre, post, deposited, withdrawn, withdrawLimitBefore, withdrawLimitAfter, profit, loss);
         if (doInspect && requiresBroadcast) _logPosition("Post", post);
-
-        if (requiresBroadcast) {
-            _writeReport(pre, post, deposited, withdrawn, withdrawLimitBefore, withdrawLimitAfter, profit, loss);
-        }
     }
 
     function _report() internal returns (uint256 profit, uint256 loss) {
@@ -249,131 +248,6 @@ contract RunSparkLendYDSMainFlowScript is BaseScript {
         console2.log("User Assets (post):", postPos.userAssets);
         if (doReport) console2.log("Profit           :", profit);
         console2.log("Loss             :", loss);
-    }
-
-    function _writeReport(
-        Position memory prePos,
-        Position memory postPos,
-        uint256 deposited,
-        uint256 withdrawn,
-        uint256 withdrawLimitBefore,
-        uint256 withdrawLimitAfter,
-        uint256 profit,
-        uint256 loss
-    ) internal {
-        string memory dir = string.concat(vm.projectRoot(), "/reports/spark-yds");
-        vm.createDir(dir, true);
-        string memory file =
-            string.concat(dir, "/run-", vm.toString(block.chainid), "-", vm.toString(block.number), ".json");
-
-        string memory profitLoss = doReport
-            ? string(abi.encodePacked(",\"profit\":", vm.toString(profit), ",\"loss\":", vm.toString(loss)))
-            : "";
-
-        bytes memory encoded = abi.encodePacked(
-            "{",
-            "\"core\":{",
-            "\"chainId\":",
-            vm.toString(block.chainid),
-            ",",
-            "\"strategy\":\"",
-            vm.toString(strategy),
-            "\",",
-            "\"tokenized\":\"",
-            vm.toString(tokenized),
-            "\",",
-            "\"aToken\":\"",
-            vm.toString(aToken),
-            "\",",
-            "\"asset\":\"",
-            vm.toString(asset),
-            "\",",
-            "\"user\":\"",
-            vm.toString(user),
-            "\"",
-            "},",
-            "\"flow\":{",
-            "\"doDeposit\":",
-            _boolToString(doDeposit),
-            ",",
-            "\"doTend\":",
-            _boolToString(doTend),
-            ",",
-            "\"doReport\":",
-            _boolToString(doReport),
-            ",",
-            "\"doWithdraw\":",
-            _boolToString(doWithdraw),
-            ",",
-            "\"doInspect\":",
-            _boolToString(doInspect),
-            ",",
-            "\"sleepSeconds\":",
-            vm.toString(sleepSecs),
-            ",",
-            "\"deposited\":",
-            vm.toString(deposited),
-            ",",
-            "\"withdrawn\":",
-            vm.toString(withdrawn),
-            ",",
-            "\"withdrawAssetsOverride\":",
-            vm.toString(withdrawAssetsOverride),
-            ",",
-            "\"withdrawBps\":",
-            vm.toString(withdrawBps),
-            ",",
-            "\"withdrawLimitBefore\":",
-            vm.toString(withdrawLimitBefore),
-            ",",
-            "\"withdrawLimitAfter\":",
-            vm.toString(withdrawLimitAfter),
-            profitLoss,
-            "},",
-            "\"positions\":{",
-            "\"pre\":{",
-            "\"idle\":",
-            vm.toString(prePos.idle),
-            ",",
-            "\"deployed\":",
-            vm.toString(prePos.deployed),
-            ",",
-            "\"total\":",
-            vm.toString(prePos.total),
-            ",",
-            "\"userShares\":",
-            vm.toString(prePos.userShares),
-            ",",
-            "\"userAssets\":",
-            vm.toString(prePos.userAssets),
-            ",",
-            "\"withdrawLimit\":",
-            vm.toString(prePos.withdrawLimit),
-            "},",
-            "\"post\":{",
-            "\"idle\":",
-            vm.toString(postPos.idle),
-            ",",
-            "\"deployed\":",
-            vm.toString(postPos.deployed),
-            ",",
-            "\"total\":",
-            vm.toString(postPos.total),
-            ",",
-            "\"userShares\":",
-            vm.toString(postPos.userShares),
-            ",",
-            "\"userAssets\":",
-            vm.toString(postPos.userAssets),
-            ",",
-            "\"withdrawLimit\":",
-            vm.toString(postPos.withdrawLimit),
-            "}",
-            "}",
-            "}"
-        );
-
-        vm.writeJson(string(encoded), file);
     }
 }
 
