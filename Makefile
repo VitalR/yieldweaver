@@ -22,11 +22,12 @@ SHELL := /bin/bash
 -include .env
 
 RPC_URL        		    ?= $(ETH_RPC_URL)
-DEPLOY_SCRIPT  			:= script/spark/DeploySparkYDS.s.sol:DeploySparkYDSScript
-FLOW_SCRIPT_SAVINGS    	:= script/spark/RunSparkYDSMainFlow.s.sol:RunSparkYDSMainFlowScript
-FLOW_SCRIPT_LEND       	:= script/spark/RunSparkLendYDSMainFlow.s.sol:RunSparkLendYDSMainFlowScript
+DEPLOY_SCRIPT_SAVINGS  	:= script/spark/savings/DeploySparkSavingsYDS.s.sol:DeploySparkSavingsYDSScript
+DEPLOY_SCRIPT_LEND     	:= script/spark/lend/DeploySparkLendYDS.s.sol:DeploySparkLendYDSScript
+FLOW_SCRIPT_SAVINGS    	:= script/spark/savings/RunSparkSavingsYDSMainFlow.s.sol:RunSparkSavingsYDSMainFlowScript
+FLOW_SCRIPT_LEND       	:= script/spark/lend/RunSparkLendYDSMainFlow.s.sol:RunSparkLendYDSMainFlowScript
 
-REQUIRED_DEPLOY_SAVINGS := DEPLOYER_PRIVATE_KEY SPARK_VAULT UNDERLYING NAME MANAGEMENT KEEPER EMERGENCY_ADMIN DONATION
+REQUIRED_DEPLOY_SAVINGS := DEPLOYER_PRIVATE_KEY SPARK_VAULT MANAGEMENT KEEPER EMERGENCY_ADMIN DONATION
 REQUIRED_DEPLOY_LEND    := DEPLOYER_PRIVATE_KEY SPARK_POOL MANAGEMENT KEEPER EMERGENCY_ADMIN DONATION
 REQUIRED_FLOW_SAVINGS   := DEPLOYER_PRIVATE_KEY STRATEGY TOKENIZED SPARK_VAULT UNDERLYING NAME
 REQUIRED_FLOW_LEND      := DEPLOYER_PRIVATE_KEY
@@ -58,13 +59,24 @@ clean :; forge clean
 clean-build :; forge clean && forge build
 fmt :; forge fmt
 
+coverage:  ; forge coverage --exclude-tests
+coverage-lcov:
+	@forge coverage --report lcov
+	@lcov --remove lcov.info \
+		"src/interfaces/*" \
+		"test/*" \
+		"script/*" \
+		--output-file lcov-filtered.info --rc lcov_branch_coverage=1
+	@genhtml lcov-filtered.info --branch-coverage --output-directory out/coverage
+	@open out/coverage/index.html || echo "Not macOS? Open manually or run: make coverage"
+
 # ------------- Helpers -------------
 
 check-env-deploy-savings:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
 	for var in $(REQUIRED_DEPLOY_SAVINGS); do \
 		if [ -z "$$${!var}" ]; then echo "Missing env: $$var"; exit 1; fi; \
-	 done
+	done
 
 check-env-deploy-lend:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
@@ -74,7 +86,6 @@ check-env-deploy-lend:
 	done; \
 	if [ -z "$$SPARK_ATOKEN" ] && [ -z "$$ATOKEN" ]; then missing="$$missing SPARK_ATOKEN|ATOKEN"; fi; \
 	if [ -z "$$UNDERLYING_LEND" ] && [ -z "$$UNDERLYING" ]; then missing="$$missing UNDERLYING_LEND|UNDERLYING"; fi; \
-	if [ -z "$$NAME_LEND" ] && [ -z "$$NAME" ]; then missing="$$missing NAME_LEND|NAME"; fi; \
 	if [ -n "$$missing" ]; then echo "Missing env:$$missing"; exit 1; fi
 
 check-env-flow-savings:
@@ -101,8 +112,7 @@ check-env-flow-lend:
 deploy-spark: check-env-deploy-savings
 	@echo "Deploying Spark Savings YDS (RPC: $(RPC_URL))"
 	@set -a; [ -f .env ] && . ./.env; set +a; \
-	export STRAT_KIND=SAVINGS; \
-	forge script $(DEPLOY_SCRIPT) \
+	forge script $(DEPLOY_SCRIPT_SAVINGS) \
 		--rpc-url $(RPC_URL) \
 		--private-key $${DEPLOYER_PRIVATE_KEY} \
 		--broadcast -vvvv
@@ -168,8 +178,7 @@ spark-flow-status: check-env-flow-savings
 deploy-spark-lend: check-env-deploy-lend
 	@echo "Deploying Spark Lend YDS (RPC: $(RPC_URL))"
 	@set -a; [ -f .env ] && . ./.env; set +a; \
-	export STRAT_KIND=LEND; \
-	forge script $(DEPLOY_SCRIPT) \
+	forge script $(DEPLOY_SCRIPT_LEND) \
 		--rpc-url $(RPC_URL) \
 		--private-key $${DEPLOYER_PRIVATE_KEY} \
 		--broadcast -vvvv
